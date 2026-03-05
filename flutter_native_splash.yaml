@@ -1,0 +1,8 @@
+flutter_native_splash:
+  color: "#ffffff"  # white background for splash screen
+  image: assets/images/logo.png
+  fullscreen: true
+  android_gravity: fill           # ensure full-screen image on Android
+  ios_content_mode: scaleToFill  # ensure full-screen on iOS
+  android: true
+  ios: true

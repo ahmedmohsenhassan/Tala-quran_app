@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'quran_screen.dart';
-import 'tafseer_screen.dart';
-import 'search_screen.dart';
-import 'recitations_screen.dart';
+import '../data/surahs.dart';
+import '../screens/surah_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -10,82 +8,52 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0B1F0E), // خلفية أخضر غامق - Dark green background
       appBar: AppBar(
-        title: const Text('تلا قرآن'),
-        centerTitle: true,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          children: const [
-            HomeItem(title: 'المصحف', icon: Icons.menu_book),
-            HomeItem(title: 'التلاوات', icon: Icons.headphones),
-            HomeItem(title: 'التفسير', icon: Icons.book_online),
-            HomeItem(title: 'البحث', icon: Icons.search),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class HomeItem extends StatelessWidget {
-  final String title;
-  final IconData icon;
-
-  const HomeItem({super.key, required this.title, required this.icon});
-
-  void _navigateToScreen(BuildContext context) {
-    Widget screen;
-
-    switch (title) {
-      case 'المصحف':
-        screen = const QuranScreen();
-        break;
-      case 'التفسير':
-        screen = const TafseerScreen();
-        break;
-      case 'البحث':
-        screen = const SearchScreen();
-        break;
-      case 'التلاوات':
-        screen = const RecitationsScreen();
-        break;
-      default:
-        screen = const Scaffold(
-          body: Center(child: Text('الشاشة غير موجودة')),
-        );
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => screen),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.teal[100],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: InkWell(
-        onTap: () => _navigateToScreen(context),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: Colors.teal[800]),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
+        backgroundColor: const Color(0xFF0B1F0E), // نفس لون الخلفية - Same as background
+        elevation: 0, // بدون ظل - No shadow
+        title: const Text(
+          'تلا قرآن', // اسم التطبيق - App name
+          style: TextStyle(
+            color: Color(0xFFFFD700), // اللون الذهبي - Golden color
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Scheherazade',
           ),
         ),
+        centerTitle: true, // توسيط العنوان - Center the title
+      ),
+      body: ListView.builder(
+        itemCount: surahs.length, // عدد السور - Number of surahs
+        itemBuilder: (context, index) {
+          final surah = surahs[index]; // السورة الحالية - Current surah
+          return ListTile(
+            title: Text(
+              '${surah["number"]}. ${surah["name"]}', // رقم واسم السورة - Surah number and name
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontFamily: 'Amiri',
+              ),
+            ),
+            subtitle: Text(
+              surah["english_name"], // الاسم بالإنجليزية - English name
+              style: const TextStyle(color: Colors.grey),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white), // السهم - Arrow icon
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SurahScreen(
+                    surahNumber: surah['number'], // رقم السورة - Surah number
+                    surahName: surah['name'], // اسم السورة - Surah name
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
