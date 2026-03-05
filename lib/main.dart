@@ -1,10 +1,8 @@
-// 🕌 مشروع "تلا قرآن" - الصفحة الرئيسية
-// 🌐 Tala Quran App - Home Screen
-// هذا هو ملف main.dart ويبدأ تشغيل التطبيق من هنا.
-// This is the main entry point for the app.
+// 🕌 مشروع "تلا قرآن" - نقطة البداية
+// 🌐 Tala Quran App - Entry Point
 
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   runApp(const TalaQuranApp());
@@ -19,18 +17,18 @@ class TalaQuranApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'تلا قرآن - Tala Quran',
       theme: ThemeData(
-        fontFamily: 'Amiri', // خط كلاسيكي عربي
-        scaffoldBackgroundColor: const Color(0xFF0B1F14), // خلفية إسلامية داكنة
+        fontFamily: 'Amiri',
+        scaffoldBackgroundColor: const Color(0xFF0B1F0E),
         colorScheme: ColorScheme.fromSwatch().copyWith(
-          primary: const Color(0xFFD4AF37), // لون ذهبي
-          secondary: const Color(0xFF0B1F14),
+          primary: const Color(0xFFD4AF37),
+          secondary: const Color(0xFF0B1F0E),
         ),
         textTheme: const TextTheme(
           bodyLarge: TextStyle(color: Colors.white),
           bodyMedium: TextStyle(color: Colors.white70),
         ),
       ),
-      home: const HomeScreen(), // الشاشة الرئيسية
+      home: const SplashScreen(), // تبدأ بشاشة البداية ثم تنتقل للرئيسية
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:tala_quran_app/screens/home_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:tala_quran_app/screens/main_nav_screen.dart';
+import '../utils/app_colors.dart';
 
 /// شاشة البداية التي تظهر عند تشغيل التطبيق
 /// Splash screen that appears on app launch
@@ -10,56 +12,74 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+
   @override
   void initState() {
     super.initState();
 
-    // يتم الانتقال تلقائيًا إلى الشاشة الرئيسية بعد 3 ثوانٍ
-    // Automatically navigate to HomeScreen after 3 seconds
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+    _controller.forward();
+
+    // الانتقال لشاشة التنقل الرئيسية بعد 3 ثوانٍ
     Future.delayed(const Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavScreen()),
+        );
+      }
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      // يحتوي على محتوى مركزي في منتصف الشاشة
-      // Contains centered content in the middle of the screen
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // شعار التطبيق
-            // App logo
-            Image(
-              image: AssetImage('assets/images/logo.png'),
-              width: 120,
-            ),
-            SizedBox(height: 20),
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
-            // اسم التطبيق
-            // App name
-            Text(
-              'تلا قرآن',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Image(
+                image: AssetImage('assets/images/logo.png'),
+                width: 140,
               ),
-            ),
-            Text(
-              'Tala Quran',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
+              const SizedBox(height: 24),
+              Text(
+                'تلا قرآن',
+                style: GoogleFonts.amiri(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.gold,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Tala Quran',
+                style: GoogleFonts.amiri(
+                  fontSize: 18,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
