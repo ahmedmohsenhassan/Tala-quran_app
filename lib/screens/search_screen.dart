@@ -5,6 +5,7 @@ import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
 import 'mushaf_viewer_screen.dart';
+import 'surah_detail_screen.dart';
 
 /// شاشة البحث في السور
 /// Search screen for finding surahs
@@ -138,21 +139,74 @@ class _SearchScreenState extends State<SearchScreen> {
                           name: surah['name'],
                           englishName: surah['english_name'],
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => MushafViewerScreen(
-                                  initialPage: QuranPageHelper.getPageForSurah(
-                                      surah['number']),
-                                ),
-                              ),
-                            );
+                            _showReadModeDialog(context, surah);
                           },
                         );
                       },
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showReadModeDialog(BuildContext context, Map<String, dynamic> surah) {
+    showDialog(
+      context: context,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: AppColors.cardBackground,
+          title: Text(
+            'اختر طريقة القراءة',
+            style: GoogleFonts.amiri(
+                color: AppColors.gold, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.menu_book, color: AppColors.gold),
+                title: const Text('قراءة من المصحف',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('عرض صفحات مصورة (تحتاج تحميل)',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MushafViewerScreen(
+                        initialPage:
+                            QuranPageHelper.getPageForSurah(surah['number']),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(color: Colors.white10),
+              ListTile(
+                leading: const Icon(Icons.text_format, color: AppColors.gold),
+                title: const Text('قراءة نصية',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('عرض آيات مكتوبة (تعمل دائماً)',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SurahDetailScreen(
+                        surahNumber: surah['number'],
+                        surahName: surah['name'],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

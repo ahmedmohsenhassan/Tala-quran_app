@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
+import '../services/audio_service.dart';
 
 /// شاشة اختيار القراء
 /// Recitations (Reciters) selection screen
@@ -115,10 +116,31 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
                     fontSize: 14,
                   ),
                 ),
-                trailing: isSelected
-                    ? const Icon(Icons.check_circle, color: AppColors.gold)
-                    : const Icon(Icons.play_circle_outline,
-                        color: AppColors.textMuted),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        isSelected
+                            ? Icons.check_circle
+                            : Icons.play_circle_fill,
+                        color:
+                            isSelected ? AppColors.gold : AppColors.textMuted,
+                      ),
+                      onPressed: () {
+                        if (!isSelected) {
+                          _selectReciter(reciter.id);
+                        }
+                        // Preview logic (using first page for preview)
+                        AudioService().playFromUrl(
+                          reciter.id == 'al_afasy'
+                              ? 'https://server7.mp3quran.net/afasi/001.mp3'
+                              : 'https://equran.me/audio/1/001.mp3',
+                        );
+                      },
+                    ),
+                  ],
+                ),
                 onTap: () => _selectReciter(reciter.id),
               ),
             );
