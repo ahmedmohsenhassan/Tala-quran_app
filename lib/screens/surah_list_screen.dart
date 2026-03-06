@@ -119,6 +119,8 @@ class SurahListScreen extends StatelessWidget {
     'الناس'
   ];
 
+  const SurahListScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Directionality(

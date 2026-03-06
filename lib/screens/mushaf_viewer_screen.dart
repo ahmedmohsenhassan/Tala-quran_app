@@ -287,10 +287,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                         Image.asset(
                           'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
                           fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) => Center(
+                          errorBuilder: (context, error, stackTrace) => const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Icon(Icons.warning_amber_rounded,
                                     color: Colors.orange, size: 48),
                                 SizedBox(height: 16),
@@ -309,10 +309,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           File(
                               '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png'),
                           fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) => Center(
+                          errorBuilder: (context, error, stackTrace) => const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Icon(Icons.broken_image,
                                     color: Colors.grey, size: 48),
                                 SizedBox(height: 16),
@@ -333,10 +333,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                             child: CircularProgressIndicator(
                                 color: AppColors.gold),
                           ),
-                          errorWidget: (context, url, error) => Center(
+                          errorWidget: (context, url, error) => const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
+                              children: [
                                 Icon(Icons.wifi_off,
                                     color: Colors.grey, size: 48),
                                 SizedBox(height: 16),

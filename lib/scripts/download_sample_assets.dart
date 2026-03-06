@@ -11,7 +11,7 @@ void main() async {
   }
 
   final client = HttpClient();
-  final baseUrl =
+  const baseUrl =
       'https://raw.githubusercontent.com/quran/quran.com-images/master/width_1024/page';
 
   print(
