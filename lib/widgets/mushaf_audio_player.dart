@@ -34,7 +34,10 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       if (mounted) {
         setState(() {
           _isPlaying = state.playing;
-          _isError = state.processingState == ProcessingState.idle && !_isPlaying && _position == Duration.zero; // Simple error approximation for stream
+          _isError = state.processingState == ProcessingState.idle &&
+              !_isPlaying &&
+              _position ==
+                  Duration.zero; // Simple error approximation for stream
         });
       }
     });
@@ -60,7 +63,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   String _getPageAudioUrl(int page) {
     final paddedPage = page.toString().padLeft(3, '0');
     // Using a reliable open source audio API for pages (e.g. mp3quran or everyayah)
-    // Note: most APIs only provide per-ayah, per-surah, or per-juz. 
+    // Note: most APIs only provide per-ayah, per-surah, or per-juz.
     // For per-page, some specific APIs exist. Using a placeholder for demonstration:
     return 'https://equran.me/audio/1/$paddedPage.mp3'; // Example format, may need adjustment based on active APIs
   }
@@ -114,7 +117,6 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               ),
             ],
           ),
-          
           if (_isError)
             const Padding(
               padding: EdgeInsets.all(8.0),
@@ -134,10 +136,14 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               ),
               child: Slider(
                 min: 0,
-                max: _duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                value: _position.inMilliseconds
+                max: _duration.inMilliseconds
                     .toDouble()
-                    .clamp(0, _duration.inMilliseconds.toDouble().clamp(1, double.infinity)),
+                    .clamp(1, double.infinity),
+                value: _position.inMilliseconds.toDouble().clamp(
+                    0,
+                    _duration.inMilliseconds
+                        .toDouble()
+                        .clamp(1, double.infinity)),
                 onChanged: (value) {
                   _audioService.seek(Duration(milliseconds: value.toInt()));
                 },
@@ -148,20 +154,23 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               children: [
                 Text(
                   _formatDuration(_position),
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12),
                 ),
                 Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.replay_10, color: AppColors.textSecondary),
+                      icon: const Icon(Icons.replay_10,
+                          color: AppColors.textSecondary),
                       iconSize: 24,
                       onPressed: () {
                         final newPos = _position - const Duration(seconds: 10);
-                        _audioService.seek(newPos < Duration.zero ? Duration.zero : newPos);
+                        _audioService.seek(
+                            newPos < Duration.zero ? Duration.zero : newPos);
                       },
                     ),
                     Container(
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: AppColors.gold,
                         shape: BoxShape.circle,
                       ),
@@ -183,18 +192,21 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.forward_10, color: AppColors.textSecondary),
+                      icon: const Icon(Icons.forward_10,
+                          color: AppColors.textSecondary),
                       iconSize: 24,
                       onPressed: () {
                         final newPos = _position + const Duration(seconds: 10);
-                        _audioService.seek(newPos > _duration ? _duration : newPos);
+                        _audioService
+                            .seek(newPos > _duration ? _duration : newPos);
                       },
                     ),
                   ],
                 ),
                 Text(
                   _formatDuration(_duration),
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12),
                 ),
               ],
             ),

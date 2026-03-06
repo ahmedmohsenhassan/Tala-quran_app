@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import '../services/audio_service.dart';
 import '../utils/app_colors.dart';
 
@@ -82,10 +81,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             ),
             child: Slider(
               min: 0,
-              max: _duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-              value: _position.inMilliseconds
-                  .toDouble()
-                  .clamp(0, _duration.inMilliseconds.toDouble().clamp(1, double.infinity)),
+              max:
+                  _duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+              value: _position.inMilliseconds.toDouble().clamp(
+                  0,
+                  _duration.inMilliseconds
+                      .toDouble()
+                      .clamp(1, double.infinity)),
               onChanged: (value) {
                 _audioService.seek(Duration(milliseconds: value.toInt()));
               },
@@ -98,7 +100,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
               // الوقت الحالي - Current time
               Text(
                 _formatDuration(_position),
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
               ),
 
               // أزرار التحكم - Control buttons
@@ -106,11 +109,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                 children: [
                   // ترجيع 10 ثوانٍ - Rewind 10s
                   IconButton(
-                    icon: const Icon(Icons.replay_10, color: AppColors.textSecondary),
+                    icon: const Icon(Icons.replay_10,
+                        color: AppColors.textSecondary),
                     iconSize: 28,
                     onPressed: () {
                       final newPos = _position - const Duration(seconds: 10);
-                      _audioService.seek(newPos < Duration.zero ? Duration.zero : newPos);
+                      _audioService.seek(
+                          newPos < Duration.zero ? Duration.zero : newPos);
                     },
                   ),
 
@@ -140,11 +145,13 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
 
                   // تقديم 10 ثوانٍ - Forward 10s
                   IconButton(
-                    icon: const Icon(Icons.forward_10, color: AppColors.textSecondary),
+                    icon: const Icon(Icons.forward_10,
+                        color: AppColors.textSecondary),
                     iconSize: 28,
                     onPressed: () {
                       final newPos = _position + const Duration(seconds: 10);
-                      _audioService.seek(newPos > _duration ? _duration : newPos);
+                      _audioService
+                          .seek(newPos > _duration ? _duration : newPos);
                     },
                   ),
                 ],
@@ -153,7 +160,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
               // المدة الكلية - Total duration
               Text(
                 _formatDuration(_duration),
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
               ),
             ],
           ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class SurahListScreen extends StatelessWidget {
-  final List<String> surahNames = [
+  final List<String> surahNames = const [
     'الفاتحة',
     'البقرة',
     'آل عمران',
