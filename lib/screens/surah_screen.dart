@@ -151,7 +151,8 @@ class _SurahScreenState extends State<SurahScreen> {
           padding: const EdgeInsets.all(24.0),
           child: Text(
             errorMessage!,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 18),
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 18),
             textAlign: TextAlign.center,
           ),
         ),
@@ -162,8 +163,8 @@ class _SurahScreenState extends State<SurahScreen> {
     // Bismillah at the top (except for At-Tawbah)
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: (widget.surahNumber != 9 && widget.surahNumber != 1) 
-          ? ayahs.length + 1 
+      itemCount: (widget.surahNumber != 9 && widget.surahNumber != 1)
+          ? ayahs.length + 1
           : ayahs.length,
       itemBuilder: (context, index) {
         if (widget.surahNumber != 9 && widget.surahNumber != 1 && index == 0) {
@@ -183,8 +184,8 @@ class _SurahScreenState extends State<SurahScreen> {
           );
         }
 
-        final ayahIndex = (widget.surahNumber != 9 && widget.surahNumber != 1) 
-            ? index - 1 
+        final ayahIndex = (widget.surahNumber != 9 && widget.surahNumber != 1)
+            ? index - 1
             : index;
         final ayah = ayahs[ayahIndex];
 
@@ -195,7 +196,7 @@ class _SurahScreenState extends State<SurahScreen> {
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: AppColors.divider.withOpacity(0.5),
+                  color: AppColors.divider.withValues(alpha: 0.5),
                   width: 0.5,
                 ),
               ),
@@ -211,7 +212,7 @@ class _SurahScreenState extends State<SurahScreen> {
                     color: AppColors.cardBackground,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: AppColors.gold.withOpacity(0.5),
+                      color: AppColors.gold.withValues(alpha: 0.5),
                     ),
                   ),
                   child: Center(

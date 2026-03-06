@@ -1,11 +1,12 @@
+// ignore_for_file: avoid_print
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 /// سكريبت الأداة المساعدة (Utilities)
 /// لتحميل أول 5 صفحات (عينة المطور) ووضعها في مجلد assets/mushaf محلياً على الكمبيوتر
-/// تم وضعه في مجلد test لكي يعمل على (ويندوز) وليس على (المحاكي) لتجنب أخطاء حماية النظام.
+/// تم إضافة معالجة Redirects الخاصة بموقع Github
 void main() {
-  test('تحميل الصفحات الخمس الأولى لتعمل بدون إنترنت', () async {
+  test('تحميل العينة', () async {
     print('جاري تهيئة مجلد assets/mushaf على جهاز الكمبيوتر...');
     final dir = Directory('assets/mushaf');
     if (!dir.existsSync()) {
@@ -13,8 +14,7 @@ void main() {
     }
 
     final client = HttpClient();
-    const baseUrl =
-        'https://raw.githubusercontent.com/quran/quran.com-images/master/width_1024/page';
+    const baseUrl = 'https://everyayah.com/data/quran_images_android/page';
 
     print('جاري تهيئة الاتصال وتنزيل العينة...');
 
@@ -23,24 +23,22 @@ void main() {
       final fileName = 'page$pageStr.png';
       final file = File('${dir.path}/$fileName');
 
-      if (file.existsSync() && file.lengthSync() > 1000) {
-        print('[ تخطي ] $fileName موجود مسبقاً.');
-        continue;
-      }
-
       print('جاري تحميل $fileName...');
       try {
         final request = await client.getUrl(Uri.parse('$baseUrl$pageStr.png'));
+        request.followRedirects = true;
+
         final response = await request.close();
-        await response.pipe(file.openWrite());
-        print('[ نجاح ] تم تحميل $fileName بنجاح.');
+        if (response.statusCode == 200) {
+          await response.pipe(file.openWrite());
+          print(
+              '[ نجاح ] تم تحميل $fileName بنجاح. الحجم: ${file.lengthSync()}');
+        } else {
+          print('[ فشل ] الكود ليس 200: ${response.statusCode}');
+        }
       } catch (e) {
         print('[ خطأ ] فشل في تحميل $fileName: $e');
       }
     }
-
-    print('\n✅ اكتملت العملية بنجاح!');
-    print('==============================');
-    print('الآن تستطيع إعادة تشغيل التطبيق بأمر flutter run!');
   });
 }

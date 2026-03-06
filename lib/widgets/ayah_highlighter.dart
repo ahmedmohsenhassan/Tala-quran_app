@@ -49,7 +49,7 @@ class _HighlightPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.amber.withOpacity(0.4)
+      ..color = Colors.amber.withValues(alpha: 0.4)
       ..style = PaintingStyle.fill;
 
     for (var coord in coordinates) {

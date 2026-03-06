@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'dart:io';
 
 /// سكريبت الأداة المساعدة (Utilities)
@@ -11,8 +12,7 @@ void main() async {
   }
 
   final client = HttpClient();
-  const baseUrl =
-      'https://raw.githubusercontent.com/quran/quran.com-images/master/width_1024/page';
+  const baseUrl = 'https://everyayah.com/data/quran_images_android/page';
 
   print(
       'جاري تهيئة الاتصال وتنزيل الـ 5 صفحات المدمجة (يجب أن يعمل هذا الملف على جهازك الشخصي، وليس المحاكي)...');

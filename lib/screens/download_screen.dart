@@ -22,7 +22,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
   int _downloadedCount = 0;
 
   final String _baseUrl =
-      'https://raw.githubusercontent.com/quran/quran.com-images/master/width_1024/page';
+      'https://everyayah.com/data/quran_images_android/page';
 
   @override
   void initState() {
@@ -156,7 +156,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
               if (_isDownloading) ...[
                 LinearProgressIndicator(
                   value: _progress,
-                  backgroundColor: Colors.grey.withOpacity(0.3),
+                  backgroundColor: Colors.grey.withValues(alpha: 0.3),
                   valueColor:
                       const AlwaysStoppedAnimation<Color>(AppColors.gold),
                   minHeight: 10,

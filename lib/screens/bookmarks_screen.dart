@@ -66,7 +66,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
           centerTitle: true,
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.gold))
             : _buildContent(),
       ),
     );
@@ -91,25 +92,29 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             color: AppColors.cardBackground,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: AppColors.gold.withOpacity(0.3)),
+              side: BorderSide(color: AppColors.gold.withValues(alpha: 0.3)),
             ),
             child: ListTile(
               leading: const Icon(Icons.history, color: AppColors.gold),
               title: Text(
                 _lastRead!['surahName'] ?? '',
-                style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+                style: GoogleFonts.amiri(
+                    color: AppColors.textPrimary, fontSize: 18),
               ),
               subtitle: Text(
                 _formatDate(_lastRead!['timestamp']),
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                style:
+                    const TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
-              trailing: const Icon(Icons.arrow_back_ios, color: AppColors.gold, size: 16),
+              trailing: const Icon(Icons.arrow_back_ios,
+                  color: AppColors.gold, size: 16),
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => MushafViewerScreen(
-                      initialPage: QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']),
+                      initialPage: QuranPageHelper.getPageForSurah(
+                          _lastRead!['surahNumber']),
                     ),
                   ),
                 );
@@ -136,11 +141,13 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.bookmark_border, color: AppColors.gold.withOpacity(0.4), size: 48),
+                  Icon(Icons.bookmark_border,
+                      color: AppColors.gold.withValues(alpha: 0.4), size: 48),
                   const SizedBox(height: 12),
                   Text(
                     'لا توجد علامات مرجعية\nاضغط مطولاً على أي آية لحفظها',
-                    style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 16),
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textMuted, fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -151,13 +158,14 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
           ...List.generate(_bookmarks.length, (index) {
             final bookmark = _bookmarks[index];
             return Dismissible(
-              key: ValueKey('${bookmark['surahNumber']}_${bookmark['ayahNumber']}'),
+              key: ValueKey(
+                  '${bookmark['surahNumber']}_${bookmark['ayahNumber']}'),
               direction: DismissDirection.endToStart,
               background: Container(
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.only(left: 20),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.3),
+                  color: Colors.red.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.delete, color: Colors.red),
@@ -173,22 +181,26 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                   leading: const Icon(Icons.bookmark, color: AppColors.gold),
                   title: Text(
                     bookmark['surahName'] ?? '',
-                    style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textPrimary, fontSize: 18),
                   ),
                   subtitle: Text(
                     'الآية ${bookmark['ayahNumber']}',
-                    style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 14),
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textMuted, fontSize: 14),
                   ),
                   trailing: Text(
                     _formatDate(bookmark['timestamp']),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    style: const TextStyle(
+                        color: AppColors.textMuted, fontSize: 11),
                   ),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => MushafViewerScreen(
-                          initialPage: QuranPageHelper.getPageForSurah(bookmark['surahNumber']),
+                          initialPage: QuranPageHelper.getPageForSurah(
+                              bookmark['surahNumber']),
                         ),
                       ),
                     );

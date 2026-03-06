@@ -34,7 +34,7 @@ class SurahCard extends StatelessWidget {
             color: AppColors.background,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: AppColors.gold.withOpacity(0.5),
+              color: AppColors.gold.withValues(alpha: 0.5),
             ),
           ),
           child: Center(

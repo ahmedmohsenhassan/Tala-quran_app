@@ -32,7 +32,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
 
   // رابط مصدر صور المصحف (مصحف المدينة)
   final String _imageBaseUrl =
-      'https://raw.githubusercontent.com/quran/quran.com-images/master/width_1024/page';
+      'https://everyayah.com/data/quran_images_android/page';
 
   @override
   void initState() {
@@ -90,7 +90,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
+                    color: Colors.grey.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -209,7 +209,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
               decoration: BoxDecoration(
                 color: AppColors.background,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+                border:
+                    Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
               ),
               child: Icon(icon, color: AppColors.gold, size: 28),
             ),
@@ -231,7 +232,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
       backgroundColor: AppColors.background,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: AppColors.background.withOpacity(0.85),
+        backgroundColor: AppColors.background.withValues(alpha: 0.85),
         elevation: 0,
         title: Text(
           'صفحة $_currentPage',
@@ -287,7 +288,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                         Image.asset(
                           'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
                           fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) => const Center(
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -309,7 +311,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           File(
                               '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png'),
                           fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) => const Center(
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [

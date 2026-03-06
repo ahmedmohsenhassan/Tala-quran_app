@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 /// خدمة تشغيل الصوت للتلاوة
@@ -24,7 +25,7 @@ class AudioService {
       await _player.play();
     } catch (e) {
       // تجاهل الأخطاء - Silently handle errors
-      print('Audio error: $e');
+      debugPrint('Audio error: $e');
     }
   }
 

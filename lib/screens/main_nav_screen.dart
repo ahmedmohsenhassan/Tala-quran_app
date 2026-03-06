@@ -37,7 +37,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
             color: AppColors.cardBackground,
             border: Border(
               top: BorderSide(
-                color: AppColors.gold.withOpacity(0.2),
+                color: AppColors.gold.withValues(alpha: 0.2),
                 width: 0.5,
               ),
             ),

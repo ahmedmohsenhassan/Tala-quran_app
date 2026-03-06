@@ -90,10 +90,10 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.cardBackground.withOpacity(0.95),
+        color: AppColors.cardBackground.withValues(alpha: 0.95),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         border: Border(
-          top: BorderSide(color: AppColors.gold.withOpacity(0.3)),
+          top: BorderSide(color: AppColors.gold.withValues(alpha: 0.3)),
         ),
       ),
       child: Column(
@@ -130,7 +130,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               data: SliderThemeData(
                 thumbColor: AppColors.gold,
                 activeTrackColor: AppColors.gold,
-                inactiveTrackColor: AppColors.gold.withOpacity(0.2),
+                inactiveTrackColor: AppColors.gold.withValues(alpha: 0.2),
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                 trackHeight: 3,
               ),

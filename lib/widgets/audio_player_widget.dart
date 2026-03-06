@@ -64,7 +64,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         border: Border(
-          top: BorderSide(color: AppColors.gold.withOpacity(0.3)),
+          top: BorderSide(color: AppColors.gold.withValues(alpha: 0.3)),
         ),
       ),
       child: Column(
@@ -75,7 +75,7 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             data: SliderThemeData(
               thumbColor: AppColors.gold,
               activeTrackColor: AppColors.gold,
-              inactiveTrackColor: AppColors.gold.withOpacity(0.2),
+              inactiveTrackColor: AppColors.gold.withValues(alpha: 0.2),
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
               trackHeight: 3,
             ),

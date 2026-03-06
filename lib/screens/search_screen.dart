@@ -74,7 +74,8 @@ class _SearchScreenState extends State<SearchScreen> {
               child: TextField(
                 controller: _searchController,
                 onChanged: _onSearch,
-                style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+                style: GoogleFonts.amiri(
+                    color: AppColors.textPrimary, fontSize: 18),
                 textDirection: TextDirection.rtl,
                 decoration: InputDecoration(
                   hintText: 'ابحث عن سورة...',
@@ -82,7 +83,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   prefixIcon: const Icon(Icons.search, color: AppColors.gold),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear, color: AppColors.textMuted),
+                          icon: const Icon(Icons.clear,
+                              color: AppColors.textMuted),
                           onPressed: () {
                             _searchController.clear();
                             _onSearch('');
@@ -97,7 +99,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: AppColors.gold.withOpacity(0.5)),
+                    borderSide: BorderSide(
+                        color: AppColors.gold.withValues(alpha: 0.5)),
                   ),
                 ),
               ),
@@ -108,7 +111,8 @@ class _SearchScreenState extends State<SearchScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 '${_filteredSurahs.length} سورة',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
+                style:
+                    const TextStyle(color: AppColors.textMuted, fontSize: 14),
               ),
             ),
             const SizedBox(height: 8),
@@ -138,7 +142,8 @@ class _SearchScreenState extends State<SearchScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => MushafViewerScreen(
-                                  initialPage: QuranPageHelper.getPageForSurah(surah['number']),
+                                  initialPage: QuranPageHelper.getPageForSurah(
+                                      surah['number']),
                                 ),
                               ),
                             );
