@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/surahs.dart';
 import '../utils/app_colors.dart';
+import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
-import 'surah_screen.dart';
+import 'mushaf_viewer_screen.dart';
 
 /// الشاشة الرئيسية - قائمة السور
 /// Home Screen - Surah list
@@ -42,9 +43,8 @@ class HomeScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => SurahScreen(
-                      surahNumber: surah['number'],
-                      surahName: surah['name'],
+                    builder: (_) => MushafViewerScreen(
+                      initialPage: QuranPageHelper.getPageForSurah(surah['number']),
                     ),
                   ),
                 );

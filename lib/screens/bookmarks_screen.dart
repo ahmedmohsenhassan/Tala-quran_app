@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../services/bookmark_service.dart';
-import 'surah_screen.dart';
+import '../utils/quran_page_helper.dart';
+import 'mushaf_viewer_screen.dart';
 
 /// شاشة العلامات المرجعية
 /// Bookmarks screen
@@ -107,9 +108,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => SurahScreen(
-                      surahNumber: _lastRead!['surahNumber'],
-                      surahName: _lastRead!['surahName'],
+                    builder: (_) => MushafViewerScreen(
+                      initialPage: QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']),
                     ),
                   ),
                 );
@@ -187,9 +187,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => SurahScreen(
-                          surahNumber: bookmark['surahNumber'],
-                          surahName: bookmark['surahName'],
+                        builder: (_) => MushafViewerScreen(
+                          initialPage: QuranPageHelper.getPageForSurah(bookmark['surahNumber']),
                         ),
                       ),
                     );
