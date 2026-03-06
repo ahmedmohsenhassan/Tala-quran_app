@@ -16,6 +16,7 @@ class BookmarksScreen extends StatefulWidget {
 
 class _BookmarksScreenState extends State<BookmarksScreen> {
   List<Map<String, dynamic>> _bookmarks = [];
+  List<Map<String, dynamic>> _pageBookmarks = [];
   Map<String, dynamic>? _lastRead;
   bool _isLoading = true;
 
@@ -27,10 +28,12 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   Future<void> _loadData() async {
     final bookmarks = await BookmarkService.getBookmarks();
+    final pageBookmarks = await BookmarkService.getPageBookmarks();
     final lastRead = await BookmarkService.getLastRead();
     if (mounted) {
       setState(() {
         _bookmarks = bookmarks;
+        _pageBookmarks = pageBookmarks;
         _lastRead = lastRead;
         _isLoading = false;
       });
@@ -43,6 +46,12 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
       bookmark['surahNumber'],
       bookmark['ayahNumber'],
     );
+    _loadData();
+  }
+
+  Future<void> _removePageBookmark(int index) async {
+    final bookmark = _pageBookmarks[index];
+    await BookmarkService.removePageBookmark(bookmark['pageNumber']);
     _loadData();
   }
 
@@ -109,12 +118,13 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
               trailing: const Icon(Icons.arrow_back_ios,
                   color: AppColors.gold, size: 16),
               onTap: () {
+                final page = _lastRead!['pageNumber'] ??
+                    QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => MushafViewerScreen(
-                      initialPage: QuranPageHelper.getPageForSurah(
-                          _lastRead!['surahNumber']),
+                      initialPage: page,
                     ),
                   ),
                 );
@@ -124,9 +134,75 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
           const SizedBox(height: 24),
         ],
 
+        // علامات الصفحات - Page bookmarks
+        if (_pageBookmarks.isNotEmpty) ...[
+          Text(
+            'صفحات المصحف',
+            style: GoogleFonts.amiri(
+              color: AppColors.gold,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...List.generate(_pageBookmarks.length, (index) {
+            final bookmark = _pageBookmarks[index];
+            return Dismissible(
+              key: ValueKey('page_${bookmark['pageNumber']}'),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 20),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.delete, color: Colors.red),
+              ),
+              onDismissed: (_) => _removePageBookmark(index),
+              child: Card(
+                color: AppColors.cardBackground,
+                margin: const EdgeInsets.only(bottom: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.menu_book, color: AppColors.gold),
+                  title: Text(
+                    'صفحة ${bookmark['pageNumber']}',
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textPrimary, fontSize: 18),
+                  ),
+                  subtitle: Text(
+                    'مصور - المصحف المدينة',
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textMuted, fontSize: 14),
+                  ),
+                  trailing: Text(
+                    _formatDate(bookmark['timestamp']),
+                    style: const TextStyle(
+                        color: AppColors.textMuted, fontSize: 11),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MushafViewerScreen(
+                          initialPage: bookmark['pageNumber'],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 24),
+        ],
+
         // العلامات المرجعية - Bookmarks list
         Text(
-          'العلامات المحفوظة',
+          'الآيات المحفوظة',
           style: GoogleFonts.amiri(
             color: AppColors.gold,
             fontSize: 20,
@@ -135,7 +211,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
         ),
         const SizedBox(height: 8),
 
-        if (_bookmarks.isEmpty)
+        if (_bookmarks.isEmpty && _pageBookmarks.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 40),
             child: Center(
@@ -145,12 +221,23 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                       color: AppColors.gold.withValues(alpha: 0.4), size: 48),
                   const SizedBox(height: 12),
                   Text(
-                    'لا توجد علامات مرجعية\nاضغط مطولاً على أي آية لحفظها',
+                    'لا توجد علامات مرجعية\nاحفظ صفحة أو آية للرجوع إليها لاحقاً',
                     style: GoogleFonts.amiri(
                         color: AppColors.textMuted, fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
                 ],
+              ),
+            ),
+          )
+        else if (_bookmarks.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                'لا توجد آيات محفوظة',
+                style:
+                    GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 16),
               ),
             ),
           )

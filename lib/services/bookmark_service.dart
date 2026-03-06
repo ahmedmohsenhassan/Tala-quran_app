@@ -5,10 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Bookmark service for saving reading progress
 class BookmarkService {
   static const String _bookmarksKey = 'bookmarks';
+  static const String _pageBookmarksKey = 'page_bookmarks';
   static const String _lastReadKey = 'last_read';
 
-  /// حفظ علامة مرجعية
-  /// Save a bookmark
+  /// حفظ علامة مرجعية لآية
+  /// Save a bookmark for an Ayah
   static Future<void> addBookmark({
     required int surahNumber,
     required String surahName,
@@ -32,8 +33,8 @@ class BookmarkService {
     await prefs.setString(_bookmarksKey, json.encode(bookmarks));
   }
 
-  /// حذف علامة مرجعية
-  /// Remove a bookmark
+  /// حذف علامة مرجعية لآية
+  /// Remove a bookmark for an Ayah
   static Future<void> removeBookmark(int surahNumber, int ayahNumber) async {
     final prefs = await SharedPreferences.getInstance();
     final bookmarks = await getBookmarks();
@@ -44,14 +45,63 @@ class BookmarkService {
     await prefs.setString(_bookmarksKey, json.encode(bookmarks));
   }
 
-  /// الحصول على كل العلامات المرجعية
-  /// Get all bookmarks
+  /// الحصول على كل علامات الآيات
+  /// Get all Ayah bookmarks
   static Future<List<Map<String, dynamic>>> getBookmarks() async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString(_bookmarksKey);
     if (data == null) return [];
-    final List<dynamic> decoded = json.decode(data);
-    return decoded.cast<Map<String, dynamic>>();
+    try {
+      final List<dynamic> decoded = json.decode(data);
+      return decoded.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// حفظ علامة مرجعية لصفحة
+  /// Save a bookmark for a Page
+  static Future<void> addPageBookmark({
+    required int pageNumber,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getPageBookmarks();
+
+    final bookmark = {
+      'pageNumber': pageNumber,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    // تجنب التكرار - Avoid duplicates
+    bookmarks.removeWhere((b) => b['pageNumber'] == pageNumber);
+    bookmarks.insert(0, bookmark);
+
+    await prefs.setString(_pageBookmarksKey, json.encode(bookmarks));
+  }
+
+  /// حذف علامة مرجعية لصفحة
+  /// Remove a bookmark for a Page
+  static Future<void> removePageBookmark(int pageNumber) async {
+    final prefs = await SharedPreferences.getInstance();
+    final bookmarks = await getPageBookmarks();
+
+    bookmarks.removeWhere((b) => b['pageNumber'] == pageNumber);
+
+    await prefs.setString(_pageBookmarksKey, json.encode(bookmarks));
+  }
+
+  /// الحصول على كل علامات الصفحات
+  /// Get all Page bookmarks
+  static Future<List<Map<String, dynamic>>> getPageBookmarks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString(_pageBookmarksKey);
+    if (data == null) return [];
+    try {
+      final List<dynamic> decoded = json.decode(data);
+      return decoded.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// حفظ آخر موضع قراءة
@@ -59,6 +109,7 @@ class BookmarkService {
   static Future<void> saveLastRead({
     required int surahNumber,
     required String surahName,
+    int? pageNumber,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -66,6 +117,7 @@ class BookmarkService {
         json.encode({
           'surahNumber': surahNumber,
           'surahName': surahName,
+          'pageNumber': pageNumber,
           'timestamp': DateTime.now().toIso8601String(),
         }));
   }
@@ -76,6 +128,10 @@ class BookmarkService {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString(_lastReadKey);
     if (data == null) return null;
-    return json.decode(data);
+    try {
+      return json.decode(data);
+    } catch (_) {
+      return null;
+    }
   }
 }

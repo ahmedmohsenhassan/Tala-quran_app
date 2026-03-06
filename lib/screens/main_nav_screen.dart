@@ -4,6 +4,7 @@ import '../utils/app_colors.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
 import 'bookmarks_screen.dart';
+import 'recitations_screen.dart';
 
 /// شاشة التنقل الرئيسية مع Bottom Navigation
 /// Main navigation shell with Bottom Navigation Bar
@@ -19,6 +20,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
 
   final List<Widget> _screens = const [
     HomeScreen(),
+    RecitationsScreen(),
     SearchScreen(),
     BookmarksScreen(),
   ];
@@ -57,6 +59,11 @@ class _MainNavScreenState extends State<MainNavScreen> {
                 icon: Icon(Icons.menu_book),
                 activeIcon: Icon(Icons.menu_book),
                 label: 'السور',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.record_voice_over),
+                activeIcon: Icon(Icons.record_voice_over),
+                label: 'التلاوات',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.search),

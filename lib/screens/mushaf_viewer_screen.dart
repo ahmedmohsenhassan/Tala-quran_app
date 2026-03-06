@@ -7,17 +7,17 @@ import '../utils/app_colors.dart';
 import '../widgets/mushaf_audio_player.dart';
 import '../widgets/ayah_highlighter.dart';
 import '../models/ayah_coordinate.dart';
+import '../services/bookmark_service.dart';
+import '../utils/quran_page_helper.dart';
 import 'download_screen.dart';
+import 'tafseer_screen.dart';
 
 /// عارض المصحف المرئي (Mushaf Image Viewer)
 /// Displays the actual scanned pages of the Quran
 class MushafViewerScreen extends StatefulWidget {
   final int initialPage;
 
-  const MushafViewerScreen({
-    super.key,
-    this.initialPage = 1,
-  });
+  const MushafViewerScreen({super.key, this.initialPage = 1});
 
   @override
   State<MushafViewerScreen> createState() => _MushafViewerScreenState();
@@ -125,28 +125,14 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                       label: 'التفسير',
                       onTap: () {
                         Navigator.pop(context);
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            backgroundColor: AppColors.cardBackground,
-                            title: const Text('التفسير الميسر',
-                                style: TextStyle(
-                                    color: AppColors.gold,
-                                    fontFamily: 'Amiri')),
-                            content: Text(
-                              'سيتم عرض تفسير آيات الصفحة $pageNumber هنا بعد ربط قاعدة بيانات التفسير.',
-                              style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontFamily: 'Amiri',
-                                  fontSize: 16),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TafseerScreen(
+                              surahNumber:
+                                  QuranPageHelper.getSurahForPage(pageNumber),
+                              ayahNumber: 1,
                             ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('إغلاق',
-                                    style: TextStyle(color: AppColors.gold)),
-                              ),
-                            ],
                           ),
                         );
                       },
@@ -177,7 +163,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => const DownloadScreen()),
+                              builder: (context) => const DownloadScreen(),
+                            ),
                           );
                         },
                       ),
@@ -209,16 +196,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
               decoration: BoxDecoration(
                 color: AppColors.background,
                 shape: BoxShape.circle,
-                border:
-                    Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppColors.gold.withValues(alpha: 0.3),
+                ),
               ),
               child: Icon(icon, color: AppColors.gold, size: 28),
             ),
             const SizedBox(height: 8),
             Text(
               label,
-              style:
-                  const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+              ),
             ),
           ],
         ),
@@ -248,8 +238,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.bookmark_add_outlined),
-            onPressed: () {
-              // TODO: حفظ الصفحة كعلامة مرجعية
+            onPressed: () async {
+              await BookmarkService.addPageBookmark(pageNumber: _currentPage);
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'تم حفظ الصفحة $_currentPage في العلامات المرجعية.',
+                    style: const TextStyle(fontFamily: 'Amiri'),
+                  ),
+                  backgroundColor: AppColors.gold,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
             },
           ),
         ],
@@ -261,15 +262,20 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
             reverse: true,
             itemCount: 604,
             onPageChanged: (index) {
+              final page = index + 1;
               setState(() {
-                _currentPage = index + 1; // index is 0-based
+                _currentPage = page; // index is 0-based
                 if (_showAudioPlayer) {
-                  // Update audio player to new page implicitly by rebuilding it,
-                  // but we might need to handle seamless playing across pages later.
-                  // For now, we stop it when flipping pages:
                   _showAudioPlayer = false;
                 }
               });
+              // Save last read position
+              BookmarkService.saveLastRead(
+                surahNumber:
+                    0, // In mushaf view we might not know surah reliably without a map
+                surahName: 'المصحف',
+                pageNumber: page,
+              );
             },
             itemBuilder: (context, index) {
               final pageNumber = index + 1;
@@ -293,14 +299,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.warning_amber_rounded,
-                                    color: Colors.orange, size: 48),
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange,
+                                  size: 48,
+                                ),
                                 SizedBox(height: 16),
                                 Text(
                                   'قم بتشغيل ملف\nlib/scripts/download_sample_assets.dart\nلجلب العينة',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 16),
+                                    color: Colors.grey,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ],
                             ),
@@ -309,20 +320,26 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                       else if (_isDownloaded && _mushafDirPath != null)
                         Image.file(
                           File(
-                              '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png'),
+                            '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png',
+                          ),
                           fit: BoxFit.fill,
                           errorBuilder: (context, error, stackTrace) =>
                               const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.broken_image,
-                                    color: Colors.grey, size: 48),
+                                Icon(
+                                  Icons.broken_image,
+                                  color: Colors.grey,
+                                  size: 48,
+                                ),
                                 SizedBox(height: 16),
                                 Text(
                                   'ملف الصورة مفقود، يرجى إعادة التحميل',
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 18),
+                                    color: Colors.grey,
+                                    fontSize: 18,
+                                  ),
                                 ),
                               ],
                             ),
@@ -334,20 +351,26 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           fit: BoxFit.fill,
                           placeholder: (context, url) => const Center(
                             child: CircularProgressIndicator(
-                                color: AppColors.gold),
+                              color: AppColors.gold,
+                            ),
                           ),
                           errorWidget: (context, url, error) => const Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.wifi_off,
-                                    color: Colors.grey, size: 48),
+                                Icon(
+                                  Icons.wifi_off,
+                                  color: Colors.grey,
+                                  size: 48,
+                                ),
                                 SizedBox(height: 16),
                                 Text(
                                   'تأكد من اتصالك بالإنترنت\nأو قم بتحميل المصحف',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      color: Colors.grey, fontSize: 18),
+                                    color: Colors.grey,
+                                    fontSize: 18,
+                                  ),
                                 ),
                               ],
                             ),

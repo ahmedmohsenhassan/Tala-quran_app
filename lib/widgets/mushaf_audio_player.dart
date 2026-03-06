@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/audio_service.dart';
 import '../utils/app_colors.dart';
+import '../models/reciter_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// ويدجت مشغّل الصوت الخاصة بصفحات المصحف
 /// Audio player specific to the Mushaf page view
@@ -25,6 +27,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   bool _isError = false;
+  Reciter? _selectedReciter;
 
   @override
   void initState() {
@@ -55,6 +58,18 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     });
 
     // Start playing immediately when opened
+    _initAndPlay();
+  }
+
+  Future<void> _initAndPlay() async {
+    final prefs = await SharedPreferences.getInstance();
+    final reciterId = prefs.getString('selected_reciter_id') ?? 'al_afasy';
+    if (mounted) {
+      setState(() {
+        _selectedReciter =
+            Reciter.defaultReciters.firstWhere((r) => r.id == reciterId);
+      });
+    }
     _playPageAudio();
   }
 
@@ -62,10 +77,18 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   // Page audio URL (temporarily Al-Husary)
   String _getPageAudioUrl(int page) {
     final paddedPage = page.toString().padLeft(3, '0');
-    // Using a reliable open source audio API for pages (e.g. mp3quran or everyayah)
-    // Note: most APIs only provide per-ayah, per-surah, or per-juz.
-    // For per-page, some specific APIs exist. Using a placeholder for demonstration:
-    return 'https://equran.me/audio/1/$paddedPage.mp3'; // Example format, may need adjustment based on active APIs
+    // For now, if no page-specific API for specific reciter is found,
+    // we use a generic placeholder or a fallback logic.
+    // In a production app, we would use a JSON map of page->audio_file.
+
+    // Fallback logic for demo
+    if (_selectedReciter?.id == 'al_husary') {
+      return 'https://equran.me/audio/1/$paddedPage.mp3';
+    } else if (_selectedReciter?.id == 'al_afasy') {
+      return 'https://server7.mp3quran.net/afasi/$paddedPage.mp3';
+    }
+
+    return 'https://equran.me/audio/1/$paddedPage.mp3';
   }
 
   Future<void> _playPageAudio() async {
