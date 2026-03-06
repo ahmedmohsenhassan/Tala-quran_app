@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../widgets/mushaf_audio_player.dart';
@@ -29,10 +29,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
   bool _showAudioPlayer = false;
   String? _mushafDirPath;
   bool _isDownloaded = false;
-
-  // رابط مصدر صور المصحف (مصحف المدينة)
-  final String _imageBaseUrl =
-      'https://everyayah.com/data/quran_images_android/page';
 
   @override
   void initState() {
@@ -62,12 +58,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
   void dispose() {
     _pageController.dispose();
     super.dispose();
-  }
-
-  /// لجلب رابط الصورة بالتنسيق الصحيح (مثال: 001.png)
-  String _getPageImageUrl(int pageNumber) {
-    final paddedNumber = pageNumber.toString().padLeft(3, '0');
-    return '$_imageBaseUrl$paddedNumber.png';
   }
 
   /// إظهار الخيارات السفلية عند الضغط على الصفحة
@@ -264,15 +254,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
             onPageChanged: (index) {
               final page = index + 1;
               setState(() {
-                _currentPage = page; // index is 0-based
+                _currentPage = page;
                 if (_showAudioPlayer) {
                   _showAudioPlayer = false;
                 }
               });
-              // Save last read position
               BookmarkService.saveLastRead(
-                surahNumber:
-                    0, // In mushaf view we might not know surah reliably without a map
+                surahNumber: 0,
                 surahName: 'المصحف',
                 pageNumber: page,
               );
@@ -295,27 +283,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
                           fit: BoxFit.fill,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: Colors.orange,
-                                  size: 48,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'قم بتشغيل ملف\nlib/scripts/download_sample_assets.dart\nلجلب العينة',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                              _buildPlaceholder(pageNumber),
                         )
                       else if (_isDownloaded && _mushafDirPath != null)
                         Image.file(
@@ -324,61 +292,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                           ),
                           fit: BoxFit.fill,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.broken_image,
-                                  color: Colors.grey,
-                                  size: 48,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'ملف الصورة مفقود، يرجى إعادة التحميل',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                              _buildPlaceholder(pageNumber),
                         )
                       else
-                        CachedNetworkImage(
-                          imageUrl: _getPageImageUrl(pageNumber),
-                          fit: BoxFit.fill,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.gold,
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.wifi_off,
-                                  color: Colors.grey,
-                                  size: 48,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'تأكد من اتصالك بالإنترنت\nأو قم بتحميل المصحف',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                        _buildPlaceholder(pageNumber),
 
-                      // Example Highlight Overlay (Will be linked to DB later)
-                      if (pageNumber == 1) // Only show mockup on page 1
+                      // Example Highlight Overlay
+                      if (pageNumber == 1)
                         AyahHighlighter(
                           coordinates: [
                             AyahCoordinate(
@@ -392,22 +312,12 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                             ),
                           ],
                         ),
-
-                      ColorFiltered(
-                        colorFilter: const ColorFilter.mode(
-                          Colors.black38,
-                          BlendMode.darken,
-                        ),
-                        child: Container(color: Colors.transparent),
-                      ),
                     ],
                   ),
                 ),
               );
             },
           ),
-
-          // Audio Player floating at the bottom
           if (_showAudioPlayer)
             Positioned(
               bottom: 0,
@@ -415,14 +325,83 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
               right: 0,
               child: MushafAudioPlayer(
                 pageNumber: _currentPage,
-                onClose: () {
-                  setState(() {
-                    _showAudioPlayer = false;
-                  });
-                },
+                onClose: () => setState(() => _showAudioPlayer = false),
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(int pageNumber) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDF5),
+        border: Border.all(
+          color: AppColors.gold.withValues(alpha: 0.2),
+          width: 20,
+        ),
+      ),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: AppColors.gold.withValues(alpha: 0.5),
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.menu_book_rounded,
+                size: 100,
+                color: AppColors.gold,
+              ),
+              const SizedBox(height: 32),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.gold.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Text(
+                  'صفحة $pageNumber',
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontSize: 28,
+                    fontFamily: 'Amiri',
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'مقطع من المصحف الشريف',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontFamily: 'Amiri',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'عينة تجريبية: الصفحة قيد التحميل حالياً.\nيمكنك الاستمرار في تصفح التطبيق وتجربة الميزات.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 14,
+                  fontFamily: 'Amiri',
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
