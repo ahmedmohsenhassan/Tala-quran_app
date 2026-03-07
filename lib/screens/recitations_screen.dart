@@ -64,41 +64,55 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
             'اختر القارئ',
             style: GoogleFonts.amiri(
               color: AppColors.gold,
-              fontSize: 24,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
           ),
           centerTitle: true,
         ),
         body: ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           itemCount: _reciters.length,
           itemBuilder: (context, index) {
             final reciter = _reciters[index];
             final isSelected = _selectedReciterId == reciter.id;
 
-            return Card(
-              color: AppColors.cardBackground,
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: isSelected ? AppColors.gold : Colors.transparent,
-                  width: 2,
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.gold
+                      : AppColors.emerald.withValues(alpha: 0.1),
+                  width: isSelected ? 1.5 : 1,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: ListTile(
-                contentPadding: const EdgeInsets.all(12),
+                contentPadding: const EdgeInsets.all(16),
                 leading: Container(
-                  width: 60,
-                  height: 60,
+                  width: 64,
+                  height: 64,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     image: DecorationImage(
                       image: NetworkImage(reciter.imageUrl),
                       fit: BoxFit.cover,
                     ),
-                    border: Border.all(color: AppColors.gold, width: 1.5),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.gold
+                          : AppColors.emerald.withValues(alpha: 0.2),
+                      width: 2,
+                    ),
                   ),
                 ),
                 title: Text(
@@ -109,37 +123,33 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                subtitle: Text(
-                  reciter.subTitle,
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 14,
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    reciter.subTitle,
+                    style: GoogleFonts.amiri(
+                      color: AppColors.textMuted,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        isSelected
-                            ? Icons.check_circle
-                            : Icons.play_circle_fill,
-                        color:
-                            isSelected ? AppColors.gold : AppColors.textMuted,
-                      ),
-                      onPressed: () {
-                        if (!isSelected) {
-                          _selectReciter(reciter.id);
-                        }
-                        // Preview logic (using first page for preview)
-                        AudioService().playFromUrl(
-                          reciter.id == 'al_afasy'
-                              ? 'https://server7.mp3quran.net/afasi/001.mp3'
-                              : 'https://equran.me/audio/1/001.mp3',
-                        );
-                      },
-                    ),
-                  ],
+                trailing: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: isSelected
+                      ? const Icon(Icons.check_circle_rounded,
+                          color: AppColors.gold, size: 28)
+                      : IconButton(
+                          icon: const Icon(Icons.play_circle_outline_rounded,
+                              color: AppColors.textMuted, size: 28),
+                          onPressed: () {
+                            _selectReciter(reciter.id);
+                            AudioService().playFromUrl(
+                              reciter.id == 'al_afasy'
+                                  ? 'https://server7.mp3quran.net/afasi/001.mp3'
+                                  : 'https://equran.me/audio/1/001.mp3',
+                            );
+                          },
+                        ),
                 ),
                 onTap: () => _selectReciter(reciter.id),
               ),

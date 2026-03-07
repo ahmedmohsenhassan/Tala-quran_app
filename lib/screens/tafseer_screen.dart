@@ -3,8 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../services/tafseer_service.dart';
 import '../utils/app_colors.dart';
 
-/// شاشة التفسير
-/// Tafseer details screen
 class TafseerScreen extends StatefulWidget {
   final int surahNumber;
   final int? ayahNumber;
@@ -67,7 +65,7 @@ class _TafseerScreenState extends State<TafseerScreen> {
             'التفسير الميسر',
             style: GoogleFonts.amiri(
               color: AppColors.gold,
-              fontSize: 22,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -86,30 +84,37 @@ class _TafseerScreenState extends State<TafseerScreen> {
   }
 
   Widget _buildTafseerList() {
-    // التمرير إلى الآية المحددة بعد التحميل
-    // Ideally use a ScrollController but for simplicity we filter or highlight
-
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       itemCount: _tafseers.length,
       itemBuilder: (context, index) {
         final item = _tafseers[index];
         final ayahNum = int.tryParse(item['aya'].toString()) ?? 0;
         final isHighlighted = widget.ayahNumber == ayahNum;
 
-        return Card(
-          color: isHighlighted
-              ? AppColors.gold.withValues(alpha: 0.1)
-              : AppColors.cardBackground,
-          margin: const EdgeInsets.only(bottom: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: isHighlighted ? AppColors.gold : Colors.transparent,
+        return Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            color: isHighlighted
+                ? AppColors.emerald.withValues(alpha: 0.05)
+                : AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isHighlighted
+                  ? AppColors.gold
+                  : AppColors.emerald.withValues(alpha: 0.1),
+              width: isHighlighted ? 1.5 : 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -118,32 +123,32 @@ class _TafseerScreenState extends State<TafseerScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                          horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: AppColors.gold.withValues(alpha: 0.3)),
+                        color: AppColors.emerald.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         'الآية $ayahNum',
-                        style: const TextStyle(
-                            color: AppColors.gold,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold),
+                        style: GoogleFonts.outfit(
+                          color: AppColors.gold,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     if (isHighlighted)
-                      const Icon(Icons.star, color: AppColors.gold, size: 16),
+                      const Icon(Icons.auto_awesome_rounded,
+                          color: AppColors.gold, size: 20),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Text(
                   item['footnotes'] ?? item['translation'] ?? '',
                   style: GoogleFonts.amiri(
                     color: AppColors.textPrimary,
-                    fontSize: 18,
-                    height: 1.6,
+                    fontSize: 19,
+                    height: 1.7,
                   ),
                 ),
               ],

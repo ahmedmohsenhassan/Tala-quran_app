@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
@@ -6,8 +7,6 @@ import 'search_screen.dart';
 import 'bookmarks_screen.dart';
 import 'recitations_screen.dart';
 
-/// شاشة التنقل الرئيسية مع Bottom Navigation
-/// Main navigation shell with Bottom Navigation Bar
 class MainNavScreen extends StatefulWidget {
   const MainNavScreen({super.key});
 
@@ -30,54 +29,88 @@ class _MainNavScreenState extends State<MainNavScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        extendBody: true, // This allows the body to go behind the bottom bar
         body: IndexedStack(
           index: _currentIndex,
           children: _screens,
         ),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: AppColors.cardBackground,
-            border: Border(
-              top: BorderSide(
-                color: AppColors.gold.withValues(alpha: 0.2),
-                width: 0.5,
+        bottomNavigationBar: _buildFloatingDock(),
+      ),
+    );
+  }
+
+  Widget _buildFloatingDock() {
+    return Container(
+      height: 90,
+      margin: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.emerald.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: AppColors.glassBorder,
+                width: 1.5,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildNavItem(0, Icons.menu_book_rounded, 'السور'),
+                _buildNavItem(1, Icons.mic_none_rounded, 'التلاوات'),
+                _buildNavItem(2, Icons.search_rounded, 'البحث'),
+                _buildNavItem(3, Icons.bookmark_outline_rounded, 'العلامات'),
+              ],
             ),
           ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: (index) => setState(() => _currentIndex = index),
-            backgroundColor: AppColors.cardBackground,
-            selectedItemColor: AppColors.gold,
-            unselectedItemColor: AppColors.textMuted,
-            selectedLabelStyle: GoogleFonts.amiri(fontSize: 13),
-            unselectedLabelStyle: GoogleFonts.amiri(fontSize: 12),
-            type: BottomNavigationBarType.fixed,
-            elevation: 0,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(Icons.menu_book),
-                activeIcon: Icon(Icons.menu_book),
-                label: 'السور',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.record_voice_over),
-                activeIcon: Icon(Icons.record_voice_over),
-                label: 'التلاوات',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.search),
-                activeIcon: Icon(Icons.search),
-                label: 'البحث',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.bookmark_border),
-                activeIcon: Icon(Icons.bookmark),
-                label: 'العلامات',
-              ),
-            ],
-          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = index),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppColors.gold.withValues(alpha: 0.1)
+                  : Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: isSelected ? AppColors.gold : AppColors.textMuted,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.amiri(
+              color: isSelected ? AppColors.gold : AppColors.textMuted,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }

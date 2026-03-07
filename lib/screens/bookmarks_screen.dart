@@ -65,10 +65,10 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
           backgroundColor: AppColors.background,
           elevation: 0,
           title: Text(
-            'العلامات المرجعية',
+            'المفضلة والعلامات',
             style: GoogleFonts.amiri(
               color: AppColors.gold,
-              fontSize: 24,
+              fontSize: 26,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -88,108 +88,49 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
       children: [
         // آخر قراءة - Last read
         if (_lastRead != null) ...[
-          Text(
-            'مُتابعة القراءة',
-            style: GoogleFonts.amiri(
-              color: AppColors.gold,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          _buildSectionHeader('مُتابعة القراءة', Icons.history_rounded),
+          const SizedBox(height: 12),
+          _buildBookmarkCard(
+            icon: Icons.auto_stories_rounded,
+            title: _lastRead!['surahName'] ?? '',
+            subtitle: _formatDate(_lastRead!['timestamp']),
+            onTap: () {
+              final page = _lastRead!['pageNumber'] ??
+                  QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MushafViewerScreen(initialPage: page),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 8),
-          Card(
-            color: AppColors.cardBackground,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: AppColors.gold.withValues(alpha: 0.3)),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.history, color: AppColors.gold),
-              title: Text(
-                _lastRead!['surahName'] ?? '',
-                style: GoogleFonts.amiri(
-                    color: AppColors.textPrimary, fontSize: 18),
-              ),
-              subtitle: Text(
-                _formatDate(_lastRead!['timestamp']),
-                style:
-                    const TextStyle(color: AppColors.textMuted, fontSize: 12),
-              ),
-              trailing: const Icon(Icons.arrow_back_ios,
-                  color: AppColors.gold, size: 16),
-              onTap: () {
-                final page = _lastRead!['pageNumber'] ??
-                    QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => MushafViewerScreen(
-                      initialPage: page,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
         ],
 
         // علامات الصفحات - Page bookmarks
         if (_pageBookmarks.isNotEmpty) ...[
-          Text(
-            'صفحات المصحف',
-            style: GoogleFonts.amiri(
-              color: AppColors.gold,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
+          _buildSectionHeader('صفحات المصحف', Icons.menu_book_rounded),
+          const SizedBox(height: 12),
           ...List.generate(_pageBookmarks.length, (index) {
             final bookmark = _pageBookmarks[index];
             return Dismissible(
               key: ValueKey('page_${bookmark['pageNumber']}'),
               direction: DismissDirection.endToStart,
-              background: Container(
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 20),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.delete, color: Colors.red),
-              ),
               onDismissed: (_) => _removePageBookmark(index),
-              child: Card(
-                color: AppColors.cardBackground,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.menu_book, color: AppColors.gold),
-                  title: Text(
-                    'صفحة ${bookmark['pageNumber']}',
-                    style: GoogleFonts.amiri(
-                        color: AppColors.textPrimary, fontSize: 18),
-                  ),
-                  subtitle: Text(
-                    'مصور - المصحف المدينة',
-                    style: GoogleFonts.amiri(
-                        color: AppColors.textMuted, fontSize: 14),
-                  ),
-                  trailing: Text(
-                    _formatDate(bookmark['timestamp']),
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11),
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildBookmarkCard(
+                  icon: Icons.sticky_note_2_rounded,
+                  title: 'صفحة ${bookmark['pageNumber']}',
+                  subtitle:
+                      'المصحف المدينة • ${_formatDate(bookmark['timestamp'])}',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => MushafViewerScreen(
-                          initialPage: bookmark['pageNumber'],
-                        ),
+                            initialPage: bookmark['pageNumber']),
                       ),
                     );
                   },
@@ -197,19 +138,12 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
               ),
             );
           }),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
         ],
 
         // العلامات المرجعية - Bookmarks list
-        Text(
-          'الآيات المحفوظة',
-          style: GoogleFonts.amiri(
-            color: AppColors.gold,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
+        _buildSectionHeader('الآيات المحفوظة', Icons.bookmark_rounded),
+        const SizedBox(height: 12),
 
         if (_bookmarks.isEmpty && _pageBookmarks.isEmpty)
           Padding(
@@ -248,39 +182,14 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
               key: ValueKey(
                   '${bookmark['surahNumber']}_${bookmark['ayahNumber']}'),
               direction: DismissDirection.endToStart,
-              background: Container(
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 20),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.delete, color: Colors.red),
-              ),
               onDismissed: (_) => _removeBookmark(index),
-              child: Card(
-                color: AppColors.cardBackground,
-                margin: const EdgeInsets.only(bottom: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.bookmark, color: AppColors.gold),
-                  title: Text(
-                    bookmark['surahName'] ?? '',
-                    style: GoogleFonts.amiri(
-                        color: AppColors.textPrimary, fontSize: 18),
-                  ),
-                  subtitle: Text(
-                    'الآية ${bookmark['ayahNumber']}',
-                    style: GoogleFonts.amiri(
-                        color: AppColors.textMuted, fontSize: 14),
-                  ),
-                  trailing: Text(
-                    _formatDate(bookmark['timestamp']),
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 11),
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildBookmarkCard(
+                  icon: Icons.bookmark_outline_rounded,
+                  title: bookmark['surahName'] ?? '',
+                  subtitle:
+                      'الآية ${bookmark['ayahNumber']} • ${_formatDate(bookmark['timestamp'])}',
                   onTap: () {
                     Navigator.push(
                       context,
@@ -297,6 +206,93 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
             );
           }),
       ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.gold, size: 20),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: GoogleFonts.amiri(
+            color: AppColors.gold,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookmarkCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.emerald.withValues(alpha: 0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.emerald.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: AppColors.emerald, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.amiri(
+                          color: AppColors.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.outfit(
+                          color: AppColors.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: AppColors.gold, size: 14),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

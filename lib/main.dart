@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
+import 'utils/app_colors.dart';
 
 void main() {
   runApp(const TalaQuranApp());
@@ -18,14 +19,16 @@ class TalaQuranApp extends StatelessWidget {
       title: 'تلا قرآن - Tala Quran',
       theme: ThemeData(
         fontFamily: 'Amiri',
-        scaffoldBackgroundColor: const Color(0xFF0B1F0E),
-        colorScheme: ColorScheme.fromSwatch().copyWith(
-          primary: const Color(0xFFD4AF37),
-          secondary: const Color(0xFF0B1F0E),
+        primaryColor: AppColors.gold,
+        scaffoldBackgroundColor: AppColors.background,
+        colorScheme: ColorScheme.dark(
+          primary: AppColors.gold,
+          secondary: AppColors.emeraldLight,
+          surface: AppColors.cardBackground,
         ),
         textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white70),
+          bodyLarge: TextStyle(color: AppColors.textPrimary),
+          bodyMedium: TextStyle(color: AppColors.textSecondary),
         ),
       ),
       home: const SplashScreen(), // تبدأ بشاشة البداية ثم تنتقل للرئيسية

@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +11,6 @@ import '../widgets/ayah_highlighter.dart';
 import '../models/ayah_coordinate.dart';
 import '../services/bookmark_service.dart';
 import '../utils/quran_page_helper.dart';
-import 'download_screen.dart';
 import 'tafseer_screen.dart';
 
 /// عارض المصحف المرئي (Mushaf Image Viewer)
@@ -60,19 +61,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
     super.dispose();
   }
 
-  /// إظهار الخيارات السفلية عند الضغط على الصفحة
   void _showPageOptions(BuildContext context, int pageNumber) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.cardBackground,
+      backgroundColor: AppColors.cream,
+      barrierColor: Colors.black.withValues(alpha: 0.2),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       builder: (context) {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -80,38 +81,33 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
+                    color: AppColors.emerald.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 Text(
                   'خيارات الصفحة $pageNumber',
-                  style: const TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 20,
-                    fontFamily: 'Amiri',
+                  style: GoogleFonts.amiri(
+                    color: AppColors.emerald,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 24),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 24,
-                  runSpacing: 24,
+                const SizedBox(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildOptionButton(
-                      icon: Icons.play_arrow,
+                      icon: Icons.play_arrow_rounded,
                       label: 'تشغيل',
                       onTap: () {
                         Navigator.pop(context);
-                        setState(() {
-                          _showAudioPlayer = true;
-                        });
+                        setState(() => _showAudioPlayer = true);
                       },
                     ),
                     _buildOptionButton(
-                      icon: Icons.menu_book,
+                      icon: Icons.menu_book_rounded,
                       label: 'التفسير',
                       onTap: () {
                         Navigator.pop(context);
@@ -128,39 +124,26 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                       },
                     ),
                     _buildOptionButton(
-                      icon: Icons.bookmark_add,
+                      icon: Icons.bookmark_add_rounded,
                       label: 'حفظ',
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(context);
+                        await BookmarkService.addPageBookmark(
+                            pageNumber: pageNumber);
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'تم حفظ الصفحة $pageNumber في العلامات المرجعية.',
-                              style: const TextStyle(fontFamily: 'Amiri'),
+                              'تم حفظ الصفحة $pageNumber في العلامات.',
+                              style: GoogleFonts.amiri(),
                             ),
-                            backgroundColor: AppColors.gold,
-                            duration: const Duration(seconds: 2),
+                            backgroundColor: AppColors.emerald,
                           ),
                         );
                       },
                     ),
-                    if (!_isDownloaded)
-                      _buildOptionButton(
-                        icon: Icons.download,
-                        label: 'تحميل',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const DownloadScreen(),
-                            ),
-                          );
-                        },
-                      ),
                   ],
                 ),
-                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -174,77 +157,42 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
     required String label,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.gold.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Icon(icon, color: AppColors.gold, size: 28),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.emerald.withValues(alpha: 0.05),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.emerald.withValues(alpha: 0.1),
               ),
             ),
-          ],
+            child: Icon(icon, color: AppColors.emerald, size: 28),
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        Text(
+          label,
+          style: GoogleFonts.amiri(
+            color: AppColors.emerald,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.cream,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: AppColors.background.withValues(alpha: 0.85),
-        elevation: 0,
-        title: Text(
-          'صفحة $_currentPage',
-          style: const TextStyle(
-            color: AppColors.gold,
-            fontSize: 20,
-            fontFamily: 'Amiri',
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: AppColors.gold),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            onPressed: () async {
-              await BookmarkService.addPageBookmark(pageNumber: _currentPage);
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'تم حفظ الصفحة $_currentPage في العلامات المرجعية.',
-                    style: const TextStyle(fontFamily: 'Amiri'),
-                  ),
-                  backgroundColor: AppColors.gold,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           PageView.builder(
@@ -277,7 +225,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Container(color: const Color(0xFFFFFDF5)),
+                      Container(color: AppColors.cream),
                       if (pageNumber <= 5)
                         Image.asset(
                           'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
@@ -318,6 +266,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
               );
             },
           ),
+
+          // Floating Top Bar
+          _buildFloatingTopBar(),
+
           if (_showAudioPlayer)
             Positioned(
               bottom: 0,
@@ -333,12 +285,70 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
     );
   }
 
+  Widget _buildFloatingTopBar() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 10,
+      left: 20,
+      right: 20,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppColors.emerald.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.glassBorder),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                      color: AppColors.gold, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const Spacer(),
+                Text(
+                  'صفحة $_currentPage',
+                  style: GoogleFonts.amiri(
+                    color: AppColors.gold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.bookmark_add_outlined,
+                      color: AppColors.gold),
+                  onPressed: () async {
+                    await BookmarkService.addPageBookmark(
+                        pageNumber: _currentPage);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('تم حفظ الصفحة $_currentPage',
+                            style: GoogleFonts.amiri()),
+                        backgroundColor: AppColors.emerald,
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPlaceholder(int pageNumber) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF5),
+        color: AppColors.cream,
         border: Border.all(
-          color: AppColors.gold.withValues(alpha: 0.2),
+          color: AppColors.gold.withValues(alpha: 0.1),
           width: 20,
         ),
       ),
@@ -347,55 +357,35 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
             border: Border.all(
-              color: AppColors.gold.withValues(alpha: 0.5),
-              width: 2,
+              color: AppColors.gold.withValues(alpha: 0.3),
+              width: 1.5,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
                 Icons.menu_book_rounded,
-                size: 100,
-                color: AppColors.gold,
-              ),
-              const SizedBox(height: 32),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Text(
-                  'صفحة $pageNumber',
-                  style: const TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 28,
-                    fontFamily: 'Amiri',
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                size: 80,
+                color: AppColors.emerald,
               ),
               const SizedBox(height: 24),
-              const Text(
-                'مقطع من المصحف الشريف',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontFamily: 'Amiri',
-                  fontWeight: FontWeight.w600,
+              Text(
+                'صفحة $pageNumber',
+                style: GoogleFonts.amiri(
+                  color: AppColors.emerald,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'عينة تجريبية: الصفحة قيد التحميل حالياً.\nيمكنك الاستمرار في تصفح التطبيق وتجربة الميزات.',
+              const SizedBox(height: 16),
+              Text(
+                'الآن في تطبيق تلا\nنظام بدائل ذكي للقراءة المتصلة',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 14,
-                  fontFamily: 'Amiri',
+                style: GoogleFonts.amiri(
+                  color: AppColors.emerald.withValues(alpha: 0.7),
+                  fontSize: 16,
                   height: 1.5,
                 ),
               ),
