@@ -12,7 +12,9 @@ void main() async {
   }
 
   final client = HttpClient();
-  const baseUrl = 'https://everyayah.com/data/quran_images_android/page';
+  // المصدر الموثوق لصور مصحف المدينة عالي الجودة
+  const baseUrl =
+      'https://raw.githubusercontent.com/saasitdev/quran-images/master/page_';
 
   print(
       'جاري تهيئة الاتصال وتنزيل الـ 5 صفحات المدمجة (يجب أن يعمل هذا الملف على جهازك الشخصي، وليس المحاكي)...');
@@ -22,14 +24,19 @@ void main() async {
     final fileName = 'page$pageStr.png';
     final file = File('${dir.path}/$fileName');
 
-    if (file.existsSync() && file.lengthSync() > 1000) {
+    // حذف الملفات التالفة (التي تحتوي على 404)
+    if (file.existsSync() && file.lengthSync() < 1000) {
+      file.deleteSync();
+    }
+
+    if (file.existsSync()) {
       print('[ تخطي ] $fileName موجود مسبقاً.');
       continue;
     }
 
     print('جاري تحميل $fileName...');
     try {
-      final request = await client.getUrl(Uri.parse('$baseUrl$pageStr.png'));
+      final request = await client.getUrl(Uri.parse('$baseUrl$i.png'));
       final response = await request.close();
       await response.pipe(file.openWrite());
       print('[ نجاح ] تم تحميل $fileName بنجاح.');
