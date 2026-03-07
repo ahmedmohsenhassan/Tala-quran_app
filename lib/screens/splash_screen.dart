@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tala_quran_app/screens/main_nav_screen.dart';
 import '../utils/app_colors.dart';
+import '../services/bookmark_service.dart';
 
-/// شاشة البداية التي تظهر عند تشغيل التطبيق
-/// Splash screen that appears on app launch
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -30,15 +29,24 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _controller.forward();
 
-    // الانتقال لشاشة التنقل الرئيسية بعد 3 ثوانٍ
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainNavScreen()),
-        );
-      }
-    });
+    _navigateToNext();
+  }
+
+  Future<void> _navigateToNext() async {
+    // جلب آخر صفحة تم قرأتها - Fetch last read page
+    final lastRead = await BookmarkService.getLastRead();
+    final int initialPage = lastRead?['pageNumber'] ?? 1;
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => MainNavScreen(initialPage: initialPage),
+        ),
+      );
+    }
   }
 
   @override

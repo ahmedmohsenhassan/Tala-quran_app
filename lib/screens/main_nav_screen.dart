@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import 'home_screen.dart';
-import 'search_screen.dart';
 import 'bookmarks_screen.dart';
 import 'recitations_screen.dart';
+import 'mushaf_viewer_screen.dart';
 
 class MainNavScreen extends StatefulWidget {
-  const MainNavScreen({super.key});
+  final int initialPage;
+  const MainNavScreen({super.key, this.initialPage = 1});
 
   @override
   State<MainNavScreen> createState() => _MainNavScreenState();
@@ -17,12 +18,18 @@ class MainNavScreen extends StatefulWidget {
 class _MainNavScreenState extends State<MainNavScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    RecitationsScreen(),
-    SearchScreen(),
-    BookmarksScreen(),
-  ];
+  late List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      MushafViewerScreen(initialPage: widget.initialPage),
+      HomeScreen(),
+      RecitationsScreen(),
+      BookmarksScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,10 +73,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildNavItem(0, Icons.menu_book_rounded, 'السور'),
-                _buildNavItem(1, Icons.mic_none_rounded, 'التلاوات'),
-                _buildNavItem(2, Icons.search_rounded, 'البحث'),
-                _buildNavItem(3, Icons.bookmark_outline_rounded, 'العلامات'),
+                _buildNavItem(0, Icons.menu_book_rounded, 'المصحف'),
+                _buildNavItem(1, Icons.grid_view_rounded, 'الفهرس'),
+                _buildNavItem(2, Icons.mic_none_rounded, 'التلاوات'),
+                _buildNavItem(3, Icons.bookmark_outline_rounded, 'المحفوظات'),
               ],
             ),
           ),
