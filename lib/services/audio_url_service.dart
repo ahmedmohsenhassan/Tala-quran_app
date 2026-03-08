@@ -5,7 +5,6 @@ import '../models/reciter_model.dart';
 class AudioUrlService {
   static const String _islamicNetworkBase =
       "https://cdn.islamic.network/quran/audio-surah/128";
-  static const String _everyAyahBase = "https://everyayah.com/data";
 
   /// توليد رابط الملف الصوتي لسورة كاملة
   /// Generate a full Surah audio URL

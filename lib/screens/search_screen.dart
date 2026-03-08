@@ -4,11 +4,10 @@ import '../data/surahs.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
+import '../services/quran_text_service.dart';
 import 'mushaf_viewer_screen.dart';
 import 'surah_detail_screen.dart';
 
-/// شاشة البحث في السور
-/// Search screen for finding surahs
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -18,7 +17,12 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final QuranTextService _quranService = QuranTextService();
+
   List<Map<String, dynamic>> _filteredSurahs = [];
+  List<Map<String, dynamic>> _ayahResults = [];
+  bool _isAyahSearch = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -26,11 +30,18 @@ class _SearchScreenState extends State<SearchScreen> {
     _filteredSurahs = List.from(surahs);
   }
 
-  void _onSearch(String query) {
-    setState(() {
-      if (query.isEmpty) {
+  void _onSearch(String query) async {
+    if (query.isEmpty) {
+      setState(() {
         _filteredSurahs = List.from(surahs);
-      } else {
+        _ayahResults = [];
+        _isLoading = false;
+      });
+      return;
+    }
+
+    if (!_isAyahSearch) {
+      setState(() {
         _filteredSurahs = surahs.where((surah) {
           final name = surah['name'].toString().toLowerCase();
           final englishName = surah['english_name'].toString().toLowerCase();
@@ -38,8 +49,17 @@ class _SearchScreenState extends State<SearchScreen> {
           final q = query.toLowerCase();
           return name.contains(q) || englishName.contains(q) || number == q;
         }).toList();
+      });
+    } else {
+      setState(() => _isLoading = true);
+      final results = await _quranService.searchAyahs(query);
+      if (mounted) {
+        setState(() {
+          _ayahResults = results;
+          _isLoading = false;
+        });
       }
-    });
+    }
   }
 
   @override
@@ -58,7 +78,7 @@ class _SearchScreenState extends State<SearchScreen> {
           backgroundColor: AppColors.background,
           elevation: 0,
           title: Text(
-            'البحث',
+            'البحث المتقدم',
             style: GoogleFonts.amiri(
               color: AppColors.gold,
               fontSize: 24,
@@ -69,6 +89,24 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         body: Column(
           children: [
+            // تختار نوع البحث - Search Type Toggle
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    _buildTypeButton('السور', !_isAyahSearch),
+                    _buildTypeButton('الآيات', _isAyahSearch),
+                  ],
+                ),
+              ),
+            ),
+
             // حقل البحث - Search field
             Padding(
               padding: const EdgeInsets.all(16),
@@ -77,9 +115,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 onChanged: _onSearch,
                 style: GoogleFonts.amiri(
                     color: AppColors.textPrimary, fontSize: 18),
-                textDirection: TextDirection.rtl,
                 decoration: InputDecoration(
-                  hintText: 'ابحث عن سورة...',
+                  hintText:
+                      _isAyahSearch ? 'ابحث عن نص آية...' : 'ابحث عن سورة...',
                   hintStyle: GoogleFonts.amiri(color: AppColors.textMuted),
                   prefixIcon: const Icon(Icons.search, color: AppColors.gold),
                   suffixIcon: _searchController.text.isNotEmpty
@@ -107,46 +145,141 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
 
-            // عدد النتائج - Results count
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                '${_filteredSurahs.length} سورة',
-                style:
-                    const TextStyle(color: AppColors.textMuted, fontSize: 14),
+            if (_isAyahSearch)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  _isLoading
+                      ? 'جاري البحث...'
+                      : '${_ayahResults.length} نتيجة بحث',
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 14),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  '${_filteredSurahs.length} سورة',
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 14),
+                ),
               ),
-            ),
+
             const SizedBox(height: 8),
 
             // نتائج البحث - Search results
             Expanded(
-              child: _filteredSurahs.isEmpty
-                  ? Center(
-                      child: Text(
-                        'لا توجد نتائج',
-                        style: GoogleFonts.amiri(
-                          color: AppColors.textMuted,
-                          fontSize: 18,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _filteredSurahs.length,
-                      itemBuilder: (context, index) {
-                        final surah = _filteredSurahs[index];
-                        return SurahCard(
-                          number: surah['number'],
-                          name: surah['name'],
-                          englishName: surah['english_name'],
-                          onTap: () {
-                            _showReadModeDialog(context, surah);
-                          },
-                        );
-                      },
-                    ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.gold))
+                  : (!_isAyahSearch ? _buildSurahList() : _buildAyahList()),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTypeButton(String title, bool isSelected) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _isAyahSearch = title == 'الآيات';
+            _onSearch(_searchController.text);
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.gold : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Center(
+            child: Text(
+              title,
+              style: GoogleFonts.amiri(
+                color: isSelected ? Colors.black : AppColors.textMuted,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSurahList() {
+    return _filteredSurahs.isEmpty
+        ? _buildEmptyState()
+        : ListView.builder(
+            itemCount: _filteredSurahs.length,
+            itemBuilder: (context, index) {
+              final surah = _filteredSurahs[index];
+              return SurahCard(
+                number: surah['number'],
+                name: surah['name'],
+                englishName: surah['english_name'],
+                onTap: () => _showReadModeDialog(context, surah),
+              );
+            },
+          );
+  }
+
+  Widget _buildAyahList() {
+    return _ayahResults.isEmpty
+        ? _buildEmptyState()
+        : ListView.builder(
+            itemCount: _ayahResults.length,
+            itemBuilder: (context, index) {
+              final ayah = _ayahResults[index];
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(16),
+                  border:
+                      Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+                ),
+                child: ListTile(
+                  title: Text(
+                    ayah['text'],
+                    style: GoogleFonts.amiri(
+                        color: AppColors.textPrimary, fontSize: 18),
+                    textAlign: TextAlign.right,
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      'سورة ${ayah['surahNumber']} - آية ${ayah['verseNumber']}',
+                      style:
+                          const TextStyle(color: AppColors.gold, fontSize: 12),
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SurahDetailScreen(
+                          surahNumber: int.parse(ayah['surahNumber']),
+                          surahName: "سورة ${ayah['surahNumber']}",
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Text(
+        'لا توجد نتائج',
+        style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 18),
       ),
     );
   }
@@ -166,49 +299,44 @@ class _SearchScreenState extends State<SearchScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.menu_book, color: AppColors.gold),
-                title: const Text('قراءة من المصحف',
-                    style: TextStyle(color: Colors.white)),
-                subtitle: const Text('عرض صفحات مصورة (تحتاج تحميل)',
-                    style: TextStyle(color: Colors.white70, fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+              _buildDialogOption(Icons.menu_book, 'قراءة من المصحف',
+                  'عرض صفحات مصورة (تحتاج تحميل)', () {
+                Navigator.pop(context);
+                Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => MushafViewerScreen(
-                        initialPage:
-                            QuranPageHelper.getPageForSurah(surah['number']),
-                      ),
-                    ),
-                  );
-                },
-              ),
+                        builder: (_) => MushafViewerScreen(
+                              initialPage: QuranPageHelper.getPageForSurah(
+                                  surah['number']),
+                            )));
+              }),
               const Divider(color: Colors.white10),
-              ListTile(
-                leading: const Icon(Icons.text_format, color: AppColors.gold),
-                title: const Text('قراءة نصية',
-                    style: TextStyle(color: Colors.white)),
-                subtitle: const Text('عرض آيات مكتوبة (تعمل دائماً)',
-                    style: TextStyle(color: Colors.white70, fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
+              _buildDialogOption(Icons.text_format, 'قراءة نصية',
+                  'عرض آيات مكتوبة (تعمل دائماً)', () {
+                Navigator.pop(context);
+                Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => SurahDetailScreen(
-                        surahNumber: surah['number'],
-                        surahName: surah['name'],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                        builder: (_) => SurahDetailScreen(
+                              surahNumber: surah['number'],
+                              surahName: surah['name'],
+                            )));
+              }),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDialogOption(
+      IconData icon, String title, String sub, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: AppColors.gold),
+      title: Text(title, style: const TextStyle(color: Colors.white)),
+      subtitle: Text(sub,
+          style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      onTap: onTap,
     );
   }
 }

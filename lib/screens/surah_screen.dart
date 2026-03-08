@@ -6,7 +6,6 @@ import '../utils/app_colors.dart';
 import '../services/audio_service.dart';
 import '../services/bookmark_service.dart';
 import '../widgets/audio_player_widget.dart';
-import '../models/reciter_model.dart';
 import '../services/audio_url_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

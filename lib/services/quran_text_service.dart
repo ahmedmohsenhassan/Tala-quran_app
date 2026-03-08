@@ -11,6 +11,55 @@ class QuranTextService {
 
   final Dio _dio = Dio();
 
+  /// البحث عن آيات تحتوي على نص معين
+  /// Search for ayahs containing specific text
+  Future<List<Map<String, dynamic>>> searchAyahs(String query) async {
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/search',
+        queryParameters: {'q': query, 'language': 'ar', 'size': 20},
+      );
+
+      if (response.statusCode == 200) {
+        final List results = response.data['search']['results'];
+        return results.map((r) {
+          return {
+            "surahNumber": r['verse_key'].split(':')[0],
+            "verseNumber": r['verse_key'].split(':')[1],
+            "text": r['text'],
+            "verseKey": r['verse_key'],
+          };
+        }).toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// جلب تفسير آية معينة
+  /// Fetch Tafseer for a specific verse
+  Future<String> getTafseer(int surah, int ayah) async {
+    try {
+      // استخدام تفسير الجلالين (رقم 16 في API quran.com)
+      // Using Tafseer Al-Jalalayn (ID 16)
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/quran/tafsirs/16',
+        queryParameters: {'verse_key': '$surah:$ayah'},
+      );
+
+      if (response.statusCode == 200) {
+        final List tafsirs = response.data['tafsirs'];
+        if (tafsirs.isNotEmpty) {
+          return tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.";
+        }
+      }
+      return "تعذر جلب التفسير.";
+    } catch (e) {
+      return "خطأ في الاتصال: $e";
+    }
+  }
+
   /// جلب بيانات السورة بالكامل (آيات نصية)
   /// Fetch complete Surah data (Uthmani text)
   Future<Map<String, dynamic>> getSurahDetail(int surahNumber) async {

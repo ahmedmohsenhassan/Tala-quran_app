@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/quran_text_service.dart';
@@ -28,6 +29,84 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   void initState() {
     super.initState();
     _surahData = _textService.getSurahDetail(widget.surahNumber);
+  }
+
+  void _showTafseer(int ayahNumber) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(30),
+            topRight: Radius.circular(30),
+          ),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Container(
+              width: 50,
+              height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'تفسير الآية $ayahNumber',
+              style: GoogleFonts.amiri(
+                color: AppColors.gold,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Divider(color: Colors.white10),
+            const SizedBox(height: 10),
+            Expanded(
+              child: FutureBuilder<String>(
+                future: _textService.getTafseer(widget.surahNumber, ayahNumber),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                        child:
+                            CircularProgressIndicator(color: AppColors.gold));
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                        child: Text('خطأ: ${snapshot.error}',
+                            style: const TextStyle(color: Colors.red)));
+                  }
+
+                  // تنظيف النص من وسوم HTML إن وجدت
+                  // Clean HTML tags if any
+                  String tafseerText = snapshot.data ?? "لا يوجد تفسير.";
+                  tafseerText =
+                      tafseerText.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
+
+                  return SingleChildScrollView(
+                    child: Text(
+                      tafseerText,
+                      style: GoogleFonts.amiri(
+                        color: AppColors.textPrimary,
+                        fontSize: 18,
+                        height: 1.8,
+                      ),
+                      textAlign: TextAlign.justify,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -103,6 +182,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       textDirection: TextDirection.rtl,
       text: TextSpan(
         children: ayahs.map((ayah) {
+          final int number = ayah['number'] ?? 0;
           return TextSpan(
             children: [
               TextSpan(
@@ -113,10 +193,12 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
                   height: 2.2,
                   fontWeight: FontWeight.w500,
                 ),
+                recognizer: LongPressGestureRecognizer()
+                  ..onLongPress = () => _showTafseer(number),
               ),
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
-                child: _buildVerseMarker(ayah['number'] ?? 0),
+                child: _buildVerseMarker(number),
               ),
               const TextSpan(text: " "),
             ],
@@ -127,28 +209,31 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   }
 
   Widget _buildVerseMarker(int number) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border:
-            Border.all(color: AppColors.gold.withValues(alpha: 0.5), width: 1),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(Icons.brightness_7_rounded,
-              color: AppColors.gold.withValues(alpha: 0.15), size: 28),
-          Text(
-            '$number',
-            style: GoogleFonts.outfit(
-              color: AppColors.gold,
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
+    return GestureDetector(
+      onTap: () => _showTafseer(number),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: AppColors.gold.withValues(alpha: 0.5), width: 1),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.brightness_7_rounded,
+                color: AppColors.gold.withValues(alpha: 0.15), size: 28),
+            Text(
+              '$number',
+              style: GoogleFonts.outfit(
+                color: AppColors.gold,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
