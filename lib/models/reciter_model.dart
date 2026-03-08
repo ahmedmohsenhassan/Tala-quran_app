@@ -5,7 +5,8 @@ class Reciter {
   final String name;
   final String subTitle;
   final String imageUrl;
-  final String baseUrl; // Base URL for audio files
+  final String baseUrl; // Base URL for everyayah.com (verse-by-verse)
+  final String identifier; // Identifier for islamic.network (full surah)
 
   const Reciter({
     required this.id,
@@ -13,6 +14,7 @@ class Reciter {
     required this.subTitle,
     required this.imageUrl,
     required this.baseUrl,
+    required this.identifier,
   });
 
   // قائمة القراء الافتراضية - Default reciters list
@@ -24,6 +26,7 @@ class Reciter {
           imageUrl:
               'https://static.qurancdn.com/images/reciters/1/mishary-rashid-alafasy.png',
           baseUrl: 'https://everyayah.com/data/Mishary_Rashid_Alafasy_128kbps/',
+          identifier: 'ar.alafasy',
         ),
         const Reciter(
           id: 'al_husary',
@@ -32,6 +35,7 @@ class Reciter {
           imageUrl:
               'https://static.qurancdn.com/images/reciters/2/mahmoud-khalil-al-hussary.png',
           baseUrl: 'https://everyayah.com/data/Husary_128kbps/',
+          identifier: 'ar.husary',
         ),
         const Reciter(
           id: 'al_minshawi',
@@ -40,6 +44,7 @@ class Reciter {
           imageUrl:
               'https://static.qurancdn.com/images/reciters/3/muhammad-siddiq-al-minshawi.png',
           baseUrl: 'https://everyayah.com/data/Minshawi_Murattal_128kbps/',
+          identifier: 'ar.minshawi',
         ),
         const Reciter(
           id: 'al_ghamdi',
@@ -48,6 +53,7 @@ class Reciter {
           imageUrl:
               'https://static.qurancdn.com/images/reciters/4/saad-al-ghamdi.png',
           baseUrl: 'https://everyayah.com/data/Ghamadi_40kbps/',
+          identifier: 'ar.ghamadi',
         ),
       ];
 }

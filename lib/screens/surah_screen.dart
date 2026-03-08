@@ -6,6 +6,9 @@ import '../utils/app_colors.dart';
 import '../services/audio_service.dart';
 import '../services/bookmark_service.dart';
 import '../widgets/audio_player_widget.dart';
+import '../models/reciter_model.dart';
+import '../services/audio_url_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// شاشة عرض آيات السورة مع مشغّل صوت
 /// Screen to display Surah ayahs with audio player
@@ -46,9 +49,23 @@ class _SurahScreenState extends State<SurahScreen> {
     super.dispose();
   }
 
-  /// تحميل بيانات السورة من ملف JSON
+  /// تحميل بيانات السورة وتوليد رابط الصوت
   Future<void> _loadSurahData() async {
     try {
+      // تحميل القارئ المفضل
+      final prefs = await SharedPreferences.getInstance();
+      final reciterId = prefs.getString('selected_reciter_id') ?? 'al_afasy';
+      final reciter = AudioUrlService.getReciterById(reciterId);
+
+      // توليد رابط الصوت الموثوق
+      setState(() {
+        audioUrl = AudioUrlService.getSurahUrl(
+          reciterIdentifier: reciter.identifier,
+          surahNumber: widget.surahNumber,
+        );
+      });
+
+      // تحميل بيانات الآيات من ملف JSON المحلي (كقاعدة نصوص)
       final manifestContent = await rootBundle.loadString('AssetManifest.json');
       final Map<String, dynamic> manifest = json.decode(manifestContent);
 
@@ -61,7 +78,6 @@ class _SurahScreenState extends State<SurahScreen> {
               final List<dynamic> rawAyahs = data['ayahs'] ?? [];
               setState(() {
                 ayahs = rawAyahs.cast<Map<String, dynamic>>();
-                audioUrl = data['audio_url'];
                 isLoading = false;
               });
               return;

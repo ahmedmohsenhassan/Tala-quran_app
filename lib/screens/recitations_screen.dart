@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
 import '../services/audio_service.dart';
+import '../services/audio_url_service.dart';
 
 /// شاشة اختيار القراء
 /// Recitations (Reciters) selection screen
@@ -143,11 +144,12 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
                               color: AppColors.textMuted, size: 28),
                           onPressed: () {
                             _selectReciter(reciter.id);
-                            AudioService().playFromUrl(
-                              reciter.id == 'al_afasy'
-                                  ? 'https://server7.mp3quran.net/afasi/001.mp3'
-                                  : 'https://equran.me/audio/1/001.mp3',
+                            // تشغيل عينة (سورة الفاتحة)
+                            final url = AudioUrlService.getSurahUrl(
+                              reciterIdentifier: reciter.identifier,
+                              surahNumber: 1,
                             );
+                            AudioService().playFromUrl(url);
                           },
                         ),
                 ),
