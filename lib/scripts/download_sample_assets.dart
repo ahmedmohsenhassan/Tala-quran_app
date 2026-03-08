@@ -14,18 +14,20 @@ void main() async {
   final client = HttpClient();
   // المصدر الموثوق لصور مصحف المدينة عالي الجودة
   const baseUrl =
-      'https://raw.githubusercontent.com/saasitdev/quran-images/master/page_';
+      'https://raw.githubusercontent.com/GovarJabbar/Quran-PNG/master/';
 
   print(
       'جاري تهيئة الاتصال وتنزيل الـ 5 صفحات المدمجة (يجب أن يعمل هذا الملف على جهازك الشخصي، وليس المحاكي)...');
 
   for (int i = 1; i <= 5; i++) {
     final pageStr = i.toString().padLeft(3, '0');
-    final fileName = 'page$pageStr.png';
+    final fileName = 'page$pageStr.png'; // الاسم المحلي
+    final remoteName = '$pageStr.png'; // الاسم في المستودع
     final file = File('${dir.path}/$fileName');
 
-    // حذف الملفات التالفة (التي تحتوي على 404)
-    if (file.existsSync() && file.lengthSync() < 1000) {
+    // حذف الملفات التالفة (التي تحتوي على 404 أو HTML)
+    if (file.existsSync() && file.lengthSync() < 5000) {
+      print('حذف ملف تالف: $fileName');
       file.deleteSync();
     }
 
@@ -34,12 +36,18 @@ void main() async {
       continue;
     }
 
-    print('جاري تحميل $fileName...');
+    print('جاري تحميل $fileName من $baseUrl$remoteName...');
     try {
-      final request = await client.getUrl(Uri.parse('$baseUrl$i.png'));
+      final request = await client.getUrl(Uri.parse('$baseUrl$remoteName'));
       final response = await request.close();
-      await response.pipe(file.openWrite());
-      print('[ نجاح ] تم تحميل $fileName بنجاح.');
+      if (response.statusCode == 200) {
+        await response.pipe(file.openWrite());
+        print(
+            '[ نجاح ] تم تحميل $fileName بنجاح (${file.lengthSync()} bytes).');
+      } else {
+        print(
+            '[ خطأ ] فشل في تحميل $fileName: كود الاستجابة ${response.statusCode}');
+      }
     } catch (e) {
       print('[ خطأ ] فشل في تحميل $fileName: $e');
     }

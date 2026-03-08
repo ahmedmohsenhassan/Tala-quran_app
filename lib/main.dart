@@ -21,7 +21,7 @@ class TalaQuranApp extends StatelessWidget {
         fontFamily: 'Amiri',
         primaryColor: AppColors.gold,
         scaffoldBackgroundColor: AppColors.background,
-        colorScheme: ColorScheme.dark(
+        colorScheme: const ColorScheme.dark(
           primary: AppColors.gold,
           secondary: AppColors.emeraldLight,
           surface: AppColors.cardBackground,

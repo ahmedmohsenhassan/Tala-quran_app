@@ -25,9 +25,9 @@ class _MainNavScreenState extends State<MainNavScreen> {
     super.initState();
     _screens = [
       MushafViewerScreen(initialPage: widget.initialPage),
-      HomeScreen(),
-      RecitationsScreen(),
-      BookmarksScreen(),
+      const HomeScreen(),
+      const RecitationsScreen(),
+      const BookmarksScreen(),
     ];
   }
 

@@ -47,24 +47,108 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
             }
 
             if (snapshot.hasError || !snapshot.hasData) {
-              return const Center(
-                  child: Text('خطأ في تحميل البيانات',
-                      style: TextStyle(color: Colors.white)));
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.red, size: 48),
+                    const SizedBox(height: 16),
+                    Text('خطأ في تحميل البيانات: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red)),
+                  ],
+                ),
+              );
             }
 
             final data = snapshot.data!;
             final List ayahs = data['ayahs'] ?? [];
 
-            return ListView.builder(
+            return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 120, 24, 40),
-              itemCount: ayahs.length,
-              itemBuilder: (context, index) {
-                final ayah = ayahs[index];
-                return _buildAyahItem(ayah, index == 0);
-              },
+              child: Column(
+                children: [
+                  if (widget.surahNumber != 1 && widget.surahNumber != 9)
+                    _buildBasmalah(),
+                  const SizedBox(height: 20),
+                  _buildMushafText(ayahs),
+                ],
+              ),
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildBasmalah() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 30),
+      child: Text(
+        "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
+        textAlign: TextAlign.center,
+        style: GoogleFonts.amiri(
+          color: AppColors.emerald,
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMushafText(List ayahs) {
+    return RichText(
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.rtl,
+      text: TextSpan(
+        children: ayahs.map((ayah) {
+          return TextSpan(
+            children: [
+              TextSpan(
+                text: ayah['text'] + " ",
+                style: GoogleFonts.amiri(
+                  color: AppColors.emerald,
+                  fontSize: 26,
+                  height: 2.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: _buildVerseMarker(ayah['number'] ?? 0),
+              ),
+              const TextSpan(text: " "),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildVerseMarker(int number) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border:
+            Border.all(color: AppColors.gold.withValues(alpha: 0.5), width: 1),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.brightness_7_rounded,
+              color: AppColors.gold.withValues(alpha: 0.15), size: 28),
+          Text(
+            '$number',
+            style: GoogleFonts.outfit(
+              color: AppColors.gold,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -95,71 +179,6 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildAyahItem(Map<String, dynamic> ayah, bool isFirst) {
-    return Column(
-      children: [
-        if (isFirst && widget.surahNumber != 1 && widget.surahNumber != 9)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 30, top: 20),
-            child: Text(
-              "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
-              textAlign: TextAlign.center,
-              style: GoogleFonts.amiri(
-                color: AppColors.emerald,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        Container(
-          margin: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            children: [
-              Text(
-                ayah['text'],
-                textAlign: TextAlign.center,
-                style: GoogleFonts.amiri(
-                  color: AppColors.emerald,
-                  fontSize: 28,
-                  height: 1.8,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Icon(Icons.brightness_7_rounded,
-                          color: AppColors.gold.withValues(alpha: 0.2),
-                          size: 40),
-                      Text(
-                        '${ayah['number']}',
-                        style: GoogleFonts.outfit(
-                          color: AppColors.gold,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Divider(
-                  color: AppColors.emerald.withValues(alpha: 0.1),
-                  thickness: 1,
-                  indent: 40,
-                  endIndent: 40),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
