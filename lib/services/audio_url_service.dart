@@ -7,13 +7,23 @@ class AudioUrlService {
       "https://cdn.islamic.network/quran/audio-surah/128";
   static const String _everyAyahBase = "https://everyayah.com/data";
 
-  /// توليد رابط الملف الصوتي لسورة كاملة من islamic.network
-  /// Generate a full Surah audio URL from islamic.network
+  /// توليد رابط الملف الصوتي لسورة كاملة
+  /// Generate a full Surah audio URL
   static String getSurahUrl({
-    required String reciterIdentifier,
+    required Reciter reciter,
     required int surahNumber,
   }) {
-    return "$_islamicNetworkBase/$reciterIdentifier/$surahNumber.mp3";
+    final String s = surahNumber.toString().padLeft(3, '0');
+
+    // Prioritize the specific server URL if provided
+    if (reciter.serverUrl.isNotEmpty) {
+      String base = reciter.serverUrl;
+      if (!base.endsWith('/')) base += '/';
+      return "$base$s.mp3";
+    }
+
+    // Fallback to islamic.network pattern
+    return "$_islamicNetworkBase/${reciter.identifier}/$surahNumber.mp3";
   }
 
   /// توليد رابط الملف الصوتي لآية محددة من everyayah.com

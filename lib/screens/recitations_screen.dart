@@ -146,7 +146,7 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
                             _selectReciter(reciter.id);
                             // تشغيل عينة (سورة الفاتحة)
                             final url = AudioUrlService.getSurahUrl(
-                              reciterIdentifier: reciter.identifier,
+                              reciter: reciter,
                               surahNumber: 1,
                             );
                             AudioService().playFromUrl(url);

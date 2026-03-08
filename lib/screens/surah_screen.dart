@@ -60,7 +60,7 @@ class _SurahScreenState extends State<SurahScreen> {
       // توليد رابط الصوت الموثوق
       setState(() {
         audioUrl = AudioUrlService.getSurahUrl(
-          reciterIdentifier: reciter.identifier,
+          reciter: reciter,
           surahNumber: widget.surahNumber,
         );
       });
