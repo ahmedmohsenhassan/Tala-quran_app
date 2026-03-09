@@ -71,7 +71,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
           final pageNumber = i + j;
           final paddedNumber = pageNumber.toString().padLeft(3, '0');
           // الاسم في GitHub هو 001.png والاسم المحلي هو page001.png
-          final fileUrl = '$_baseUrl$pageNumber.png';
+          final fileUrl = '$_baseUrl$paddedNumber.png';
           final filePath = '${mushafDir.path}/page$paddedNumber.png';
 
           final file = File(filePath);

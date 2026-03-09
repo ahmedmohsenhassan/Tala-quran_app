@@ -26,7 +26,7 @@ class Reciter {
           name: 'مشاري راشد العفاسي',
           subTitle: 'AlAfasy',
           imageUrl:
-              'https://static.qurancdn.com/images/reciters/1/mishary-rashid-alafasy.png',
+              'https://static.qurancdn.com/images/reciters/6/mishary-rashid-alafasy-profile.jpeg',
           baseUrl: 'https://everyayah.com/data/Mishary_Rashid_Alafasy_128kbps/',
           identifier: 'ar.alafasy',
           serverUrl: 'https://server8.mp3quran.net/afs/',
@@ -36,7 +36,7 @@ class Reciter {
           name: 'محمود خليل الحصري',
           subTitle: 'AlHusary',
           imageUrl:
-              'https://static.qurancdn.com/images/reciters/2/mahmoud-khalil-al-hussary.png',
+              'https://static.qurancdn.com/images/reciters/5/mahmoud-khalil-al-hussary-profile.png',
           baseUrl: 'https://everyayah.com/data/Husary_128kbps/',
           identifier: 'ar.husary',
           serverUrl: 'https://server13.mp3quran.net/husr/',
@@ -46,7 +46,7 @@ class Reciter {
           name: 'محمد صديق المنشاوي',
           subTitle: 'Al-Minshawi',
           imageUrl:
-              'https://static.qurancdn.com/images/reciters/3/muhammad-siddiq-al-minshawi.png',
+              'https://static.qurancdn.com/images/reciters/7/mohamed-siddiq-el-minshawi-profile.jpeg',
           baseUrl: 'https://everyayah.com/data/Minshawi_Murattal_128kbps/',
           identifier: 'ar.minshawi',
           serverUrl: 'https://server10.mp3quran.net/minsh/',
@@ -56,7 +56,7 @@ class Reciter {
           name: 'سعد الغامدي',
           subTitle: 'Saad Al-Ghamdi',
           imageUrl:
-              'https://static.qurancdn.com/images/reciters/4/saad-al-ghamdi.png',
+              'https://static.qurancdn.com/images/reciters/16/saad-al-ghamdi-profile.png?v=1',
           baseUrl: 'https://everyayah.com/data/Ghamadi_40kbps/',
           identifier: 'ar.ghamadi',
           serverUrl: 'https://server7.mp3quran.net/s_gmd/',
