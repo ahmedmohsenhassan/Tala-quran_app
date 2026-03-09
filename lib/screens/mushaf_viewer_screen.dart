@@ -195,76 +195,78 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          PageView.builder(
-            controller: _pageController,
-            reverse: true,
-            itemCount: 604,
-            onPageChanged: (index) {
-              final page = index + 1;
-              setState(() {
-                _currentPage = page;
-                if (_showAudioPlayer) {
-                  _showAudioPlayer = false;
-                }
-              });
-              BookmarkService.saveLastRead(
-                surahNumber: 0,
-                surahName: 'المصحف',
-                pageNumber: page,
-              );
-            },
-            itemBuilder: (context, index) {
-              final pageNumber = index + 1;
-              return GestureDetector(
-                onTap: () {
-                  _showPageOptions(context, pageNumber);
-                },
-                child: InteractiveViewer(
-                  minScale: 1.0,
-                  maxScale: 3.0,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Container(color: AppColors.cream),
-                      if (pageNumber <= 5)
-                        Image.asset(
-                          'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
-                          fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildPlaceholder(pageNumber),
-                        )
-                      else if (_isDownloaded && _mushafDirPath != null)
-                        Image.file(
-                          File(
-                            '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png',
-                          ),
-                          fit: BoxFit.fill,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildPlaceholder(pageNumber),
-                        )
-                      else
-                        _buildPlaceholder(pageNumber),
-
-                      // Example Highlight Overlay
-                      if (pageNumber == 1)
-                        AyahHighlighter(
-                          coordinates: [
-                            AyahCoordinate(
-                              surahNumber: 1,
-                              ayahNumber: 1,
-                              pageNumber: 1,
-                              minX: 153,
-                              maxX: 866,
-                              minY: 341,
-                              maxY: 462,
+          Directionality(
+            textDirection: TextDirection.rtl,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: 604,
+              onPageChanged: (index) {
+                final page = index + 1;
+                setState(() {
+                  _currentPage = page;
+                  if (_showAudioPlayer) {
+                    _showAudioPlayer = false;
+                  }
+                });
+                BookmarkService.saveLastRead(
+                  surahNumber: 0,
+                  surahName: 'المصحف',
+                  pageNumber: page,
+                );
+              },
+              itemBuilder: (context, index) {
+                final pageNumber = index + 1;
+                return GestureDetector(
+                  onTap: () {
+                    _showPageOptions(context, pageNumber);
+                  },
+                  child: InteractiveViewer(
+                    minScale: 1.0,
+                    maxScale: 3.0,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Container(color: AppColors.cream),
+                        if (pageNumber <= 5)
+                          Image.asset(
+                            'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
+                            fit: BoxFit.fill,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildPlaceholder(pageNumber),
+                          )
+                        else if (_isDownloaded && _mushafDirPath != null)
+                          Image.file(
+                            File(
+                              '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png',
                             ),
-                          ],
-                        ),
-                    ],
+                            fit: BoxFit.fill,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildPlaceholder(pageNumber),
+                          )
+                        else
+                          _buildPlaceholder(pageNumber),
+
+                        // Example Highlight Overlay
+                        if (pageNumber == 1)
+                          AyahHighlighter(
+                            coordinates: [
+                              AyahCoordinate(
+                                surahNumber: 1,
+                                ayahNumber: 1,
+                                pageNumber: 1,
+                                minX: 153,
+                                maxX: 866,
+                                minY: 341,
+                                maxY: 462,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
 
           // Floating Top Bar
