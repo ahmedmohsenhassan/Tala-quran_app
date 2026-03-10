@@ -52,47 +52,54 @@ class _SplashScreenState extends State<SplashScreen>
 
     // --- Phase 2: Book Opening ---
     _bookController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2200));
+        vsync: this, duration: const Duration(milliseconds: 2000));
     _bookOpen = Tween<double>(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(parent: _bookController, curve: Curves.easeInOutQuart));
 
     // --- Phase 3: Page Flip ---
     _pageFlipController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1800));
+        vsync: this, duration: const Duration(milliseconds: 1500));
     _pageFlip =
         CurvedAnimation(parent: _pageFlipController, curve: Curves.easeInOut);
 
     _startSequence();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Precache the logo to avoid JANK during first frame
+    precacheImage(const AssetImage('assets/images/logo.png'), context);
+  }
+
   Future<void> _startSequence() async {
-    // تحميل أخر قراءة في الخلفية — Load last read in background
+    // تحميل أخر قراءة في الخلفية
     final lastRead = await BookmarkService.getLastRead();
     _lastReadPage = lastRead?['pageNumber'] ?? 1;
 
     // المرحلة الأولى: اللوجو
     _logoController.forward();
-    await Future.delayed(const Duration(milliseconds: 1500));
+    await Future.delayed(const Duration(milliseconds: 1800));
 
     if (!mounted) return;
     setState(() => _phase = 1);
 
     // المرحلة الثانية: فتح الكتاب
     _bookController.forward();
-    await Future.delayed(const Duration(milliseconds: 2300));
+    await Future.delayed(const Duration(milliseconds: 2200));
 
     if (!mounted) return;
     setState(() => _phase = 2);
 
     // المرحلة الثالثة: تقليب الصفحات
     _pageFlipController.forward();
-    await Future.delayed(const Duration(milliseconds: 1800));
+    await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
     setState(() => _phase = 3);
 
     // الانتقال للمنشور الرئيسي
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       Navigator.pushReplacement(
@@ -100,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen>
         PageRouteBuilder(
           pageBuilder: (_, __, ___) =>
               MainNavScreen(initialPage: _lastReadPage),
-          transitionDuration: const Duration(milliseconds: 1000),
+          transitionDuration: const Duration(milliseconds: 800),
           transitionsBuilder: (_, anim, __, child) =>
               FadeTransition(opacity: anim, child: child),
         ),
@@ -125,15 +132,15 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // عزل رسم الخلفية الثابتة لتحسين الأداء — Isolate background painting
+          // عزل رسم الخلفية الثابتة لتحسين الأداء
           const RepaintBoundary(child: _BackgroundPattern()),
 
-          // المحتوى الأساسي
+          // المحتوى الأساسي باستخدام Opacity للتحكم في الظهور لتجنب الـ Switcher Lag
           Center(
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // اللوجو (مع تلاشي عند فتح الكتاب)
+                // اللوجو
                 Opacity(
                   opacity: _phase == 0
                       ? 1.0
@@ -141,7 +148,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: _buildLogoPhase(),
                 ),
 
-                // الكتاب (يتحرك في الاتجاه العربي)
+                // الكتاب (يتحرك في الاتجاه العربي - يفتح جهة اليمين)
                 if (_phase >= 1)
                   Opacity(
                     opacity: _phase <= 2
@@ -171,7 +178,7 @@ class _SplashScreenState extends State<SplashScreen>
       right: 0,
       child: AnimatedOpacity(
         opacity: _phase == 0 ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 500),
+        duration: const Duration(milliseconds: 400),
         child: Column(
           children: [
             Text(
@@ -206,7 +213,7 @@ class _SplashScreenState extends State<SplashScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             const _LogoImage(),
-            const SizedBox(height: 44),
+            const SizedBox(height: 40),
             Text(
               'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
               style: GoogleFonts.amiri(
@@ -222,8 +229,8 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Widget _buildBookPhase(Size size) {
-    final bookWidth = size.width * 0.82;
-    final bookHeight = bookWidth * 1.45;
+    final bookWidth = size.width * 0.85;
+    final bookHeight = bookWidth * 1.4;
     final halfWidth = bookWidth / 2;
 
     return AnimatedBuilder(
@@ -238,7 +245,7 @@ class _SplashScreenState extends State<SplashScreen>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // الصفحة اليمنى (ثابتة - تظهر كأول صفحة)
+              // الصفحة اليمنى (ثابتة - تظهر كأول صفحة تحت الغلاف المفتوح)
               Positioned(
                 right: 0,
                 child: _BookPage(
@@ -249,14 +256,14 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // الغلاف (يفتح من اليمين باتجاه اليمين - الاتجاه العربي)
+              // الغلاف (يبدأ على اليمين ويفتح لليمين - اتجاه عربي)
               Positioned(
                 right: 0,
                 child: Transform(
-                  alignment: Alignment.centerRight,
+                  alignment: Alignment.centerRight, // المفصلة على اليمين
                   transform: Matrix4.identity()
                     ..setEntry(3, 2, 0.001)
-                    ..rotateY(-(progress * pi * 0.48)),
+                    ..rotateY(-(progress * pi * 0.48)), // يفتح لليمين
                   child: _BookPage(
                     width: halfWidth,
                     height: bookHeight,
@@ -267,12 +274,12 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // الصفحة اليسرى (تظهر بالتدريج عند فتح الغلاف)
+              // الصفحة اليسرى (تظهر بالتدريج عند فتح الكتاب)
               if (progress > 0.1)
                 Positioned(
                   left: 0,
                   child: Opacity(
-                    opacity: (progress * 2).clamp(0.0, 1.0),
+                    opacity: progress.clamp(0.0, 1.0),
                     child: _BookPage(
                       width: halfWidth,
                       height: bookHeight,
@@ -291,8 +298,9 @@ class _SplashScreenState extends State<SplashScreen>
                 Positioned(
                   bottom: 30,
                   child: FadeTransition(
-                      opacity: _pageFlip,
-                      child: _PageLabel(lastRead: _lastReadPage)),
+                    opacity: _pageFlip,
+                    child: _PageLabel(lastRead: _lastReadPage),
+                  ),
                 ),
             ],
           ),
@@ -306,9 +314,10 @@ class _SplashScreenState extends State<SplashScreen>
     const pageCount = 3;
     return List.generate(pageCount, (i) {
       final delay = i * 0.2;
-      final pageProgress = ((progress - delay) / (0.8)).clamp(0.0, 1.0);
-      if (pageProgress <= 0 || pageProgress >= 1.0)
+      final pageProgress = ((progress - delay) / 0.8).clamp(0.0, 1.0);
+      if (pageProgress <= 0 || pageProgress >= 1.0) {
         return const SizedBox.shrink();
+      }
 
       return Positioned(
         right: 0,
@@ -319,7 +328,7 @@ class _SplashScreenState extends State<SplashScreen>
             ..rotateY(-(pageProgress * pi * 0.45)),
           child: _BookPage(
               width: width - 2,
-              height: height - 8,
+              height: height - 10,
               isCoverSide: false,
               showContent: false),
         ),
@@ -331,19 +340,17 @@ class _SplashScreenState extends State<SplashScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const CircularProgressIndicator(color: AppColors.gold, strokeWidth: 3),
-        const SizedBox(height: 28),
+        const CircularProgressIndicator(color: AppColors.gold),
+        const SizedBox(height: 24),
         Text(
           'تلا قرآن',
           style: GoogleFonts.amiri(
-              color: AppColors.gold, fontSize: 26, fontWeight: FontWeight.bold),
+              color: AppColors.gold, fontSize: 24, fontWeight: FontWeight.bold),
         ),
       ],
     );
   }
 }
-
-/// --- المكونات الفرعية (Sub-components) لتحسين الأداء وتجنب إعادة البناء غير الضرورية ---
 
 class _LogoImage extends StatelessWidget {
   const _LogoImage();
@@ -357,7 +364,7 @@ class _LogoImage extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: AppColors.gold.withValues(alpha: 0.15),
-            blurRadius: 60,
+            blurRadius: 50,
             spreadRadius: 10,
           ),
         ],
@@ -380,12 +387,11 @@ class _BackgroundPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppColors.emerald.withValues(alpha: 0.03)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+      ..color = AppColors.emerald.withValues(alpha: 0.04)
+      ..style = PaintingStyle.stroke;
     for (int i = 1; i <= 6; i++) {
       canvas.drawCircle(
-          Offset(size.width / 2, size.height / 2), i * 90.0, paint);
+          Offset(size.width / 2, size.height / 2), i * 100.0, paint);
     }
   }
 
@@ -422,19 +428,18 @@ class _BookPage extends StatelessWidget {
           bottomRight: isCoverSide ? Radius.zero : const Radius.circular(8),
         ),
         border:
-            Border.all(color: AppColors.gold.withValues(alpha: 0.7), width: 3),
+            Border.all(color: AppColors.gold.withValues(alpha: 0.6), width: 3),
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
           if (isCoverSide) _buildCoverOrnament(),
-          if (showContent) const _PageContent(),
-          // الإطار الداخلي
+          if (showContent) const _PageLines(),
           Container(
             margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               border: Border.all(
-                  color: AppColors.gold.withValues(alpha: 0.3), width: 1),
+                  color: AppColors.gold.withValues(alpha: 0.2), width: 1),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -445,11 +450,11 @@ class _BookPage extends StatelessWidget {
 
   Widget _buildCoverOrnament() {
     return Opacity(
-      opacity: (1.0 - coverProgress * 2.2).clamp(0.0, 1.0),
+      opacity: (1.0 - coverProgress * 2.5).clamp(0.0, 1.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.auto_awesome, color: AppColors.gold, size: 54),
+          const Icon(Icons.auto_awesome, color: AppColors.gold, size: 50),
           const SizedBox(height: 20),
           Text(
             'القرآن\nالكريم',
@@ -465,12 +470,12 @@ class _BookPage extends StatelessWidget {
   }
 }
 
-class _PageContent extends StatelessWidget {
-  const _PageContent();
+class _PageLines extends StatelessWidget {
+  const _PageLines();
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -479,7 +484,7 @@ class _PageContent extends StatelessWidget {
             'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
             style: GoogleFonts.amiri(
                 color: AppColors.emerald,
-                fontSize: 17,
+                fontSize: 18,
                 fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 18),
@@ -489,7 +494,7 @@ class _PageContent extends StatelessWidget {
               child: Container(
                   height: 2,
                   width: double.infinity,
-                  color: AppColors.emerald.withValues(alpha: 0.08)),
+                  color: AppColors.emerald.withValues(alpha: 0.1)),
             ),
         ],
       ),
@@ -503,19 +508,19 @@ class _PageLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.emerald.withValues(alpha: 0.95),
+        color: AppColors.emerald.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8)
+          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10)
         ],
       ),
       child: Text(
         'فتح صفحة $lastRead',
         style: GoogleFonts.amiri(
-            color: AppColors.gold, fontSize: 17, fontWeight: FontWeight.bold),
+            color: AppColors.gold, fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
   }
