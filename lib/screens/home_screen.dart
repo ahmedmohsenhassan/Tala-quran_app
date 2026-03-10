@@ -5,8 +5,11 @@ import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
 import '../services/bookmark_service.dart';
+import '../services/streak_service.dart';
+import '../services/notification_service.dart';
 import 'mushaf_viewer_screen.dart';
 import 'surah_detail_screen.dart';
+import 'notification_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,19 +20,31 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _lastRead;
+  Map<String, dynamic>? _streakData;
 
   @override
   void initState() {
     super.initState();
-    _loadLastRead();
+    _loadData();
   }
 
-  Future<void> _loadLastRead() async {
+  Future<void> _loadData() async {
     final lastRead = await BookmarkService.getLastRead();
+    final streak = await StreakService.getStreakData();
     if (mounted) {
       setState(() {
         _lastRead = lastRead;
+        _streakData = streak;
       });
+      // عرض رسالة ترحيبية ذكية — Show smart welcome message
+      final settings = await NotificationService.getSettings();
+      if (settings['enabled'] == true) {
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            NotificationService.showInAppNotification(context);
+          }
+        });
+      }
     }
   }
 
@@ -51,7 +66,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const SizedBox(height: 24),
                     _buildWelcomeHeader(),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+                    if (_streakData != null) _buildStreakCard(),
+                    const SizedBox(height: 24),
                     if (_lastRead != null) ...[
                       _buildQuickAccessSection(),
                       const SizedBox(height: 32),
@@ -112,6 +129,18 @@ class _HomeScreenState extends State<HomeScreen> {
           fontWeight: FontWeight.bold,
         ),
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.notifications_outlined, color: AppColors.gold),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen()),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -224,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
               MaterialPageRoute(
                 builder: (_) => MushafViewerScreen(initialPage: page),
               ),
-            ).then((_) => _loadLastRead());
+            ).then((_) => _loadData());
           },
           child: Container(
             padding: const EdgeInsets.all(20),
@@ -293,6 +322,141 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildStreakCard() {
+    final streak = _streakData!;
+    final int currentStreak = streak['currentStreak'] ?? 0;
+    final bool hasReadToday = streak['hasReadToday'] ?? false;
+    final String emoji = streak['streakEmoji'] ?? '✨';
+    final nextMilestone = streak['nextMilestone'] as Map<String, dynamic>;
+    final List<bool> weekDays = streak['weekDays'] as List<bool>;
+    final dayNames = ['إث', 'ثل', 'أر', 'خم', 'جم', 'سب', 'أح'];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.emerald.withValues(alpha: 0.15),
+            AppColors.gold.withValues(alpha: 0.08),
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: hasReadToday
+              ? AppColors.gold.withValues(alpha: 0.3)
+              : Colors.white.withValues(alpha: 0.05),
+        ),
+      ),
+      child: Column(
+        children: [
+          // الصف العلوي — Header row
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 32)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$currentStreak يوم مواظبة',
+                      style: GoogleFonts.amiri(
+                        color: AppColors.gold,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      hasReadToday
+                          ? 'أحسنت! قرأت اليوم ✓'
+                          : 'لم تقرأ اليوم بعد',
+                      style: GoogleFonts.amiri(
+                        color: hasReadToday
+                            ? AppColors.emeraldLight
+                            : AppColors.textMuted,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // حالة أيام الأسبوع — Week progress
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(7, (i) {
+              final isActive = weekDays[i];
+              return Column(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isActive
+                          ? AppColors.gold
+                          : Colors.white.withValues(alpha: 0.05),
+                      border: Border.all(
+                        color: isActive
+                            ? AppColors.gold
+                            : Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Center(
+                      child: isActive
+                          ? const Icon(Icons.check,
+                              color: Colors.black, size: 16)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    dayNames[i],
+                    style: GoogleFonts.outfit(
+                      color: AppColors.textMuted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+          const SizedBox(height: 16),
+
+          // الإنجاز القادم — Next milestone
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Text(nextMilestone['emoji'] ?? '🌟',
+                    style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${nextMilestone['title']} — باقي ${nextMilestone['remaining']} يوم',
+                    style: GoogleFonts.amiri(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showReadModeDialog(BuildContext context, Map<String, dynamic> surah) {
     showModalBottomSheet(
       context: context,
@@ -340,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             QuranPageHelper.getPageForSurah(surah['number']),
                       ),
                     ),
-                  ).then((_) => _loadLastRead());
+                  ).then((_) => _loadData());
                 },
               ),
               const SizedBox(height: 12),
@@ -358,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         surahName: surah['name'],
                       ),
                     ),
-                  ).then((_) => _loadLastRead());
+                  ).then((_) => _loadData());
                 },
               ),
             ],

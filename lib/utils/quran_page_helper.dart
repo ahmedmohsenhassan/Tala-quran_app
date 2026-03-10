@@ -136,4 +136,161 @@ class QuranPageHelper {
     }
     return closestSurah;
   }
+
+  /// الحصول على اسم السورة من رقم الصفحة
+  static String getSurahNameForPage(int pageNumber) {
+    int surahNumber = getSurahForPage(pageNumber);
+    return surahNames[surahNumber - 1];
+  }
+
+  /// الحصول على رقم الجزء من رقم الصفحة
+  static int getJuzForPage(int pageNumber) {
+    if (pageNumber >= 582) return 30;
+    if (pageNumber >= 562) return 29;
+    if (pageNumber >= 542) return 28;
+    if (pageNumber >= 522) return 27;
+    if (pageNumber >= 502) return 26;
+    if (pageNumber >= 482) return 25;
+    if (pageNumber >= 462) return 24;
+    if (pageNumber >= 442) return 23;
+    if (pageNumber >= 422) return 22;
+    if (pageNumber >= 402) return 21;
+    if (pageNumber >= 382) return 20;
+    if (pageNumber >= 362) return 19;
+    if (pageNumber >= 342) return 18;
+    if (pageNumber >= 322) return 17;
+    if (pageNumber >= 302) return 16;
+    if (pageNumber >= 282) return 15;
+    if (pageNumber >= 262) return 14;
+    if (pageNumber >= 242) return 13;
+    if (pageNumber >= 222) return 12;
+    if (pageNumber >= 202) return 11;
+    if (pageNumber >= 182) return 10;
+    if (pageNumber >= 162) return 9;
+    if (pageNumber >= 142) return 8;
+    if (pageNumber >= 122) return 7;
+    if (pageNumber >= 102) return 6;
+    if (pageNumber >= 82) return 5;
+    if (pageNumber >= 62) return 4;
+    if (pageNumber >= 42) return 3;
+    if (pageNumber >= 22) return 2;
+    return 1;
+  }
+
+  static const List<String> surahNames = [
+    'الفاتحة',
+    'البقرة',
+    'آل عمران',
+    'النساء',
+    'المائدة',
+    'الأنعام',
+    'الأعراف',
+    'الأنفال',
+    'التوبة',
+    'يونس',
+    'هود',
+    'يوسف',
+    'الرعد',
+    'إبراهيم',
+    'الحجر',
+    'النحل',
+    'الإسراء',
+    'الكهف',
+    'مريم',
+    'طه',
+    'الأنبياء',
+    'الحج',
+    'المؤمنون',
+    'النور',
+    'الفرقان',
+    'الشعراء',
+    'النمل',
+    'القصص',
+    'العنكبوت',
+    'الروم',
+    'لقمان',
+    'السجدة',
+    'الأحزاب',
+    'سبأ',
+    'فاطر',
+    'يس',
+    'الصافات',
+    'ص',
+    'الزمر',
+    'غافر',
+    'فصلت',
+    'الشورى',
+    'الزخرف',
+    'الدخان',
+    'الجاثية',
+    'الأحقاف',
+    'محمد',
+    'الفتح',
+    'الحجرات',
+    'ق',
+    'الذاريات',
+    'الطور',
+    'النجم',
+    'القمر',
+    'الرحمن',
+    'الواقعة',
+    'الحديد',
+    'المجادلة',
+    'الحشر',
+    'الممتحنة',
+    'الصف',
+    'الجمعة',
+    'المنافقون',
+    'التغابن',
+    'الطلاق',
+    'التحريم',
+    'الملك',
+    'القلم',
+    'الحاقة',
+    'المعارج',
+    'نوح',
+    'الجن',
+    'المزمل',
+    'المدثر',
+    'القيامة',
+    'الإنسان',
+    'المرسلات',
+    'النبأ',
+    'النازعات',
+    'عبس',
+    'التكوير',
+    'الانفطار',
+    'المطففين',
+    'الانشقاق',
+    'البروج',
+    'الطارق',
+    'الأعلى',
+    'الغاشية',
+    'الفجر',
+    'البلد',
+    'الشمس',
+    'الليل',
+    'الضحى',
+    'الشرح',
+    'التين',
+    'العلق',
+    'القدر',
+    'البينة',
+    'الزلزلة',
+    'العاديات',
+    'القارعة',
+    'التكاثر',
+    'العصر',
+    'الهمزة',
+    'الفيل',
+    'قريش',
+    'الماعون',
+    'الكوثر',
+    'الكافرون',
+    'النصر',
+    'المسد',
+    'الإخلاص',
+    'الفلق',
+    'الناس'
+  ];
 }

@@ -1,15 +1,15 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../widgets/mushaf_audio_player.dart';
-import '../widgets/ayah_highlighter.dart';
-import '../models/ayah_coordinate.dart';
 import '../services/bookmark_service.dart';
+import '../services/streak_service.dart';
+import '../services/reading_stats_service.dart';
+import '../services/khatma_service.dart';
 import '../utils/quran_page_helper.dart';
 import 'tafseer_screen.dart';
 
@@ -30,14 +30,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
   bool _showAudioPlayer = false;
   String? _mushafDirPath;
   bool _isDownloaded = false;
+  bool _showBars = true;
+  bool _isLoading = true;
+  String _currentSurahName = '';
+  int _currentJuz = 1;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialPage;
-    // PageView uses 0-based index, but Quran pages are 1-604
     _pageController = PageController(initialPage: widget.initialPage - 1);
-    _initMushafDir();
+    _loadPageData(widget.initialPage);
+    // تأكد من أن حالة النظام طبيعية في البداية — Default to edge-to-edge
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   Future<void> _initMushafDir() async {
@@ -55,9 +60,27 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
     }
   }
 
+  Future<void> _loadPageData(int pageNumber) async {
+    setState(() => _isLoading = true);
+    await _initMushafDir();
+    _currentSurahName = QuranPageHelper.getSurahNameForPage(pageNumber);
+    _currentJuz = QuranPageHelper.getJuzForPage(pageNumber);
+    setState(() => _isLoading = false);
+  }
+
+  void _toggleFullscreen() {
+    setState(() => _showBars = !_showBars);
+    if (_showBars) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -134,9 +157,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'تم حفظ الصفحة $pageNumber في العلامات.',
-                              style: GoogleFonts.amiri(),
-                            ),
+                                'تم حفظ الصفحة $pageNumber في العلامات.',
+                                style: GoogleFonts.amiri()),
                             backgroundColor: AppColors.emerald,
                           ),
                         );
@@ -168,9 +190,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
             decoration: BoxDecoration(
               color: AppColors.emerald.withValues(alpha: 0.05),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.emerald.withValues(alpha: 0.1),
-              ),
+              border:
+                  Border.all(color: AppColors.emerald.withValues(alpha: 0.1)),
             ),
             child: Icon(icon, color: AppColors.emerald, size: 28),
           ),
@@ -191,208 +212,240 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.cream,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          Directionality(
-            textDirection: TextDirection.rtl,
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: 604,
-              onPageChanged: (index) {
-                final page = index + 1;
-                setState(() {
-                  _currentPage = page;
-                  if (_showAudioPlayer) {
-                    _showAudioPlayer = false;
-                  }
-                });
-                BookmarkService.saveLastRead(
-                  surahNumber: 0,
-                  surahName: 'المصحف',
-                  pageNumber: page,
-                );
-              },
-              itemBuilder: (context, index) {
-                final pageNumber = index + 1;
-                return GestureDetector(
-                  onTap: () {
-                    _showPageOptions(context, pageNumber);
-                  },
-                  child: InteractiveViewer(
-                    minScale: 1.0,
-                    maxScale: 3.0,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Container(color: AppColors.cream),
-                        if (pageNumber <= 5)
-                          Image.asset(
-                            'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
-                            fit: BoxFit.fill,
-                            errorBuilder: (context, error, stackTrace) =>
-                                _buildPlaceholder(pageNumber),
-                          )
-                        else if (_isDownloaded && _mushafDirPath != null)
-                          Image.file(
-                            File(
-                              '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png',
+      backgroundColor: Colors.white,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.emerald))
+          : GestureDetector(
+              onTap: _toggleFullscreen,
+              child: Stack(
+                children: [
+                  // محتوى الصفحات — Page content
+                  Directionality(
+                    textDirection: TextDirection.rtl,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: 604,
+                      onPageChanged: (index) {
+                        final page = index + 1;
+                        setState(() {
+                          _currentPage = page;
+                          _currentSurahName =
+                              QuranPageHelper.getSurahNameForPage(page);
+                          _currentJuz = QuranPageHelper.getJuzForPage(page);
+                          if (_showAudioPlayer) _showAudioPlayer = false;
+                        });
+                        BookmarkService.saveLastRead(
+                          surahNumber: 0,
+                          surahName: 'المصحف',
+                          pageNumber: page,
+                        );
+                        StreakService.recordReading();
+                        ReadingStatsService.recordSession();
+                        KhatmaService.recordPage();
+                      },
+                      itemBuilder: (context, index) {
+                        final pageNumber = index + 1;
+                        return InteractiveViewer(
+                          minScale: 1.0,
+                          maxScale: 3.0,
+                          child: GestureDetector(
+                            onLongPress: () =>
+                                _showPageOptions(context, pageNumber),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Container(color: Colors.white),
+                                _buildPageImage(pageNumber),
+                              ],
                             ),
-                            fit: BoxFit.fill,
-                            errorBuilder: (context, error, stackTrace) =>
-                                _buildPlaceholder(pageNumber),
-                          )
-                        else
-                          _buildPlaceholder(pageNumber),
-
-                        // Example Highlight Overlay
-                        if (pageNumber == 1)
-                          AyahHighlighter(
-                            coordinates: [
-                              AyahCoordinate(
-                                surahNumber: 1,
-                                ayahNumber: 1,
-                                pageNumber: 1,
-                                minX: 153,
-                                maxX: 866,
-                                minY: 341,
-                                maxY: 462,
-                              ),
-                            ],
                           ),
-                      ],
+                        );
+                      },
                     ),
                   ),
-                );
-              },
-            ),
-          ),
 
-          // Floating Top Bar
-          _buildFloatingTopBar(),
+                  // الشريط العلوي — Top Bar
+                  if (_showBars)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _buildTopBar(),
+                    ),
 
-          if (_showAudioPlayer)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: MushafAudioPlayer(
-                pageNumber: _currentPage,
-                onClose: () => setState(() => _showAudioPlayer = false),
+                  // شريط المعلومات السفلي — Bottom Bar
+                  if (_showBars)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: _buildBottomBar(),
+                    ),
+
+                  // مشغل الصوت — Audio Player
+                  if (_showAudioPlayer)
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: MushafAudioPlayer(
+                        pageNumber: _currentPage,
+                        onClose: () => setState(() => _showAudioPlayer = false),
+                      ),
+                    ),
+                ],
               ),
             ),
+    );
+  }
+
+  Widget _buildPageImage(int pageNumber) {
+    if (pageNumber <= 5) {
+      return Image.asset(
+        'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
+        fit: BoxFit.fill,
+        errorBuilder: (context, error, stackTrace) =>
+            _buildPlaceholder(pageNumber),
+      );
+    } else if (_isDownloaded && _mushafDirPath != null) {
+      final file = File(
+          '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png');
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.fill,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildPlaceholder(pageNumber),
+        );
+      }
+    }
+    return _buildPlaceholder(pageNumber);
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top + 5,
+          bottom: 8,
+          left: 10,
+          right: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.emerald.withValues(alpha: 0.9),
+            AppColors.emerald.withValues(alpha: 0.7),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10)
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: Colors.white, size: 20),
+            onPressed: () {
+              SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+              Navigator.pop(context);
+            },
+          ),
+          const Spacer(),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _currentSurahName,
+                style: GoogleFonts.amiri(
+                  color: AppColors.gold,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'الجزء $_currentJuz',
+                style: GoogleFonts.amiri(color: Colors.white, fontSize: 13),
+              ),
+            ],
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+            onPressed: () => _showPageOptions(context, _currentPage),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFloatingTopBar() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 10,
-      left: 20,
-      right: 20,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.emerald.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.glassBorder),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                      color: AppColors.gold, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Spacer(),
-                Text(
-                  'صفحة $_currentPage',
-                  style: GoogleFonts.amiri(
-                    color: AppColors.gold,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.bookmark_add_outlined,
-                      color: AppColors.gold),
-                  onPressed: () async {
-                    await BookmarkService.addPageBookmark(
-                        pageNumber: _currentPage);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('تم حفظ الصفحة $_currentPage',
-                            style: GoogleFonts.amiri()),
-                        backgroundColor: AppColors.emerald,
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 15),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.8),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'صفحة $_currentPage',
+            style: GoogleFonts.outfit(
+                color: AppColors.gold,
+                fontSize: 18,
+                fontWeight: FontWeight.bold),
           ),
-        ),
+          Text(
+            'اسحب لليمين واليسار للتنقل',
+            style: GoogleFonts.amiri(
+                color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+          ),
+          IconButton(
+            icon: const Icon(Icons.bookmark_border_rounded,
+                color: AppColors.gold),
+            onPressed: () async {
+              await BookmarkService.addPageBookmark(pageNumber: _currentPage);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('تم الحفظ', style: GoogleFonts.amiri())),
+                );
+              }
+            },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPlaceholder(int pageNumber) {
     return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cream,
-        border: Border.all(
-          color: AppColors.gold.withValues(alpha: 0.1),
-          width: 20,
-        ),
-      ),
+      color: Colors.white,
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: AppColors.gold.withValues(alpha: 0.3),
-              width: 1.5,
-            ),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.menu_book_rounded,
-                size: 80,
-                color: AppColors.emerald,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'صفحة $pageNumber',
-                style: GoogleFonts.amiri(
-                  color: AppColors.emerald,
-                  fontSize: 28,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.menu_book_rounded,
+                size: 100, color: AppColors.emerald),
+            const SizedBox(height: 20),
+            Text(
+              'صفحة $pageNumber',
+              style: GoogleFonts.amiri(
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'الآن في تطبيق تلا\nنظام بدائل ذكي للقراءة المتصلة',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.amiri(
-                  color: AppColors.emerald.withValues(alpha: 0.7),
-                  fontSize: 16,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
+                  color: AppColors.emerald),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'الآن في وضع المعاينة\nحمّل الصفحات لقراءة المصحف كاملاً',
+              textAlign: TextAlign.center,
+              style:
+                  GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 16),
+            ),
+          ],
         ),
       ),
     );
