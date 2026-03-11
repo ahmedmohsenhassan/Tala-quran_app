@@ -126,12 +126,35 @@ class _RecitationsScreenState extends State<RecitationsScreen> {
                 ),
                 subtitle: Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    reciter.subTitle,
-                    style: GoogleFonts.amiri(
-                      color: AppColors.textMuted,
-                      fontSize: 14,
-                    ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          reciter.qiraah,
+                          style: GoogleFonts.amiri(
+                            color: AppColors.gold,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          reciter.subTitle,
+                          style: GoogleFonts.amiri(
+                            color: AppColors.textMuted,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 trailing: AnimatedSwitcher(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/audio_service.dart';
+import '../services/audio_url_service.dart';
 import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,27 +74,25 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     _playPageAudio();
   }
 
-  // رابط تشغيل الصفحة (مؤقتاً للشيخ الحصري من everyayah)
-  // Page audio URL (temporarily Al-Husary)
+  // رابط تشغيل الصفحة باستخدام الخدمة الديناميكية
+  // Page audio URL using dynamic service
   String _getPageAudioUrl(int page) {
-    final paddedPage = page.toString().padLeft(3, '0');
-    // For now, if no page-specific API for specific reciter is found,
-    // we use a generic placeholder or a fallback logic.
-    // In a production app, we would use a JSON map of page->audio_file.
-
-    // Fallback logic for demo
-    if (_selectedReciter?.id == 'al_husary') {
-      return 'https://equran.me/audio/1/$paddedPage.mp3';
-    } else if (_selectedReciter?.id == 'al_afasy') {
-      return 'https://server7.mp3quran.net/afasi/$paddedPage.mp3';
+    if (_selectedReciter == null) {
+      // Fallback if not loaded yet
+      return 'https://server13.mp3quran.net/husr/${page.toString().padLeft(3, '0')}.mp3';
     }
 
-    return 'https://equran.me/audio/1/$paddedPage.mp3';
+    return AudioUrlService.getPageUrl(
+      reciter: _selectedReciter!,
+      pageNumber: page,
+    );
   }
 
   Future<void> _playPageAudio() async {
     setState(() => _isError = false);
-    await _audioService.playFromUrl(_getPageAudioUrl(widget.pageNumber));
+    final url = _getPageAudioUrl(widget.pageNumber);
+    debugPrint('Playing page audio: $url');
+    await _audioService.playFromUrl(url);
   }
 
   String _formatDuration(Duration d) {

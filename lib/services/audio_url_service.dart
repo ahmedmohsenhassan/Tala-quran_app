@@ -44,12 +44,39 @@ class AudioUrlService {
     return "$base$s$a.mp3";
   }
 
+  /// توليد رابط الملف الصوتي لصفحة محددة (مصحف المدينة)
+  /// Generate a page-specific audio URL
+  static String getPageUrl({
+    required Reciter reciter,
+    required int pageNumber,
+  }) {
+    final String p = pageNumber.toString().padLeft(3, '0');
+
+    // Use specific servers known for page-by-page mp3
+    if (reciter.id.contains('warsh')) {
+      // Warsh logic: use specific warsh server if available
+      return 'https://server10.mp3quran.net/warsh/husr/$p.mp3';
+    }
+
+    // Default Hafs logic
+    if (reciter.id == 'al_afasy') {
+      return 'https://server8.mp3quran.net/afs/$p.mp3';
+    }
+
+    // Fallback for Al-Husary Hafs
+    return 'https://server13.mp3quran.net/husr/$p.mp3';
+  }
+
   /// الحصول على القارئ المفضل من SharedPreferences (helper)
-  /// This is a convenience method, the actual fetching happens in UI usually
   static Reciter getReciterById(String id) {
-    return Reciter.defaultReciters.firstWhere(
-      (r) => r.id == id,
-      orElse: () => Reciter.defaultReciters.first,
-    );
+    try {
+      return Reciter.defaultReciters.firstWhere((r) => r.id == id);
+    } catch (_) {
+      // Return a safe default if ID changes or is invalid
+      return Reciter.defaultReciters.firstWhere(
+        (r) => r.id.contains('afasy') || r.id.contains('hafs'),
+        orElse: () => Reciter.defaultReciters.first,
+      );
+    }
   }
 }

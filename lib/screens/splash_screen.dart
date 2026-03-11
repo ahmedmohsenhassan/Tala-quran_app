@@ -231,7 +231,6 @@ class _SplashScreenState extends State<SplashScreen>
   Widget _buildBookPhase(Size size) {
     final bookWidth = size.width * 0.85;
     final bookHeight = bookWidth * 1.4;
-    final halfWidth = bookWidth / 2;
 
     return AnimatedBuilder(
       animation: Listenable.merge([_bookController, _pageFlipController]),
@@ -245,27 +244,24 @@ class _SplashScreenState extends State<SplashScreen>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // الصفحة اليمنى (ثابتة - تظهر كأول صفحة تحت الغلاف المفتوح)
-              Positioned(
-                right: 0,
-                child: _BookPage(
-                  width: halfWidth,
-                  height: bookHeight,
-                  isCoverSide: false,
-                  showContent: progress > 0.8 || _phase >= 2,
-                ),
+              // الصفحة الأساسية (ثابتة تحت الغلاف)
+              _BookPage(
+                width: bookWidth,
+                height: bookHeight,
+                isCoverSide: false,
+                showContent: progress > 0.6 || _phase >= 2,
               ),
 
-              // الغلاف (يبدأ على اليمين ويفتح لليمين - اتجاه عربي)
-              Positioned(
-                right: 0,
-                child: Transform(
-                  alignment: Alignment.centerRight, // المفصلة على اليمين
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, 0.001)
-                    ..rotateY(-(progress * pi * 0.48)), // يفتح لليمين
+              // الغلاف (يفتح لجهة اليمين - اتجاه عربي)
+              Transform(
+                alignment: Alignment.centerRight,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateY(-(progress * pi * 0.85)), // يفتح بزاوية واسعة
+                child: Opacity(
+                  opacity: (1.0 - progress * 1.5).clamp(0.0, 1.0),
                   child: _BookPage(
-                    width: halfWidth,
+                    width: bookWidth,
                     height: bookHeight,
                     isCoverSide: true,
                     showContent: false,
@@ -274,24 +270,9 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
 
-              // الصفحة اليسرى (تظهر بالتدريج عند فتح الكتاب)
-              if (progress > 0.1)
-                Positioned(
-                  left: 0,
-                  child: Opacity(
-                    opacity: progress.clamp(0.0, 1.0),
-                    child: _BookPage(
-                      width: halfWidth,
-                      height: bookHeight,
-                      isCoverSide: false,
-                      showContent: progress > 0.6 || _phase >= 2,
-                    ),
-                  ),
-                ),
-
               // صفحات تتقلب
               if (_phase == 2)
-                ..._buildFlippingPages(flipProgress, halfWidth, bookHeight),
+                ..._buildFlippingPages(flipProgress, bookWidth, bookHeight),
 
               // مؤشر رقم الصفحة
               if (_phase >= 2)
@@ -311,27 +292,21 @@ class _SplashScreenState extends State<SplashScreen>
 
   List<Widget> _buildFlippingPages(
       double progress, double width, double height) {
-    const pageCount = 3;
+    const pageCount = 2; // تقليل العدد للواقعية في الصفحة الواحدة
     return List.generate(pageCount, (i) {
-      final delay = i * 0.2;
-      final pageProgress = ((progress - delay) / 0.8).clamp(0.0, 1.0);
+      final delay = i * 0.3;
+      final pageProgress = ((progress - delay) / 0.7).clamp(0.0, 1.0);
       if (pageProgress <= 0 || pageProgress >= 1.0) {
         return const SizedBox.shrink();
       }
 
-      return Positioned(
-        right: 0,
-        child: Transform(
-          alignment: Alignment.centerLeft,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.001)
-            ..rotateY(-(pageProgress * pi * 0.45)),
-          child: _BookPage(
-              width: width - 2,
-              height: height - 10,
-              isCoverSide: false,
-              showContent: false),
-        ),
+      return Transform(
+        alignment: Alignment.centerRight,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, 0.001)
+          ..rotateY(-(pageProgress * pi * 0.85)),
+        child: _BookPage(
+            width: width, height: height, isCoverSide: false, showContent: true),
       );
     });
   }
@@ -421,12 +396,7 @@ class _BookPage extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: isCoverSide ? AppColors.emerald : const Color(0xFFFFFDF0),
-        borderRadius: BorderRadius.only(
-          topLeft: isCoverSide ? const Radius.circular(8) : Radius.zero,
-          bottomLeft: isCoverSide ? const Radius.circular(8) : Radius.zero,
-          topRight: isCoverSide ? Radius.zero : const Radius.circular(8),
-          bottomRight: isCoverSide ? Radius.zero : const Radius.circular(8),
-        ),
+        borderRadius: BorderRadius.circular(12),
         border:
             Border.all(color: AppColors.gold.withValues(alpha: 0.6), width: 3),
       ),

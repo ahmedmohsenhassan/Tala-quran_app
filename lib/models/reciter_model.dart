@@ -9,6 +9,8 @@ class Reciter {
   final String identifier; // Identifier for islamic.network
   final String serverUrl; // Base URL for full surahs (e.g. mp3quran.net)
 
+  final String qiraah; // "حفص" أو "ورش"
+
   const Reciter({
     required this.id,
     required this.name,
@@ -17,6 +19,7 @@ class Reciter {
     required this.baseUrl,
     required this.identifier,
     required this.serverUrl,
+    this.qiraah = "حفص",
   });
 
   // قائمة القراء الافتراضية - Default reciters list
@@ -32,14 +35,37 @@ class Reciter {
           serverUrl: 'https://server8.mp3quran.net/afs/',
         ),
         const Reciter(
-          id: 'al_husary',
-          name: 'محمود خليل الحصري',
-          subTitle: 'AlHusary',
+          id: 'al_husary_hafs',
+          name: 'محمود خليل الحصري (حفص)',
+          subTitle: 'Al-Husary (Hafs)',
           imageUrl:
               'https://static.qurancdn.com/images/reciters/5/mahmoud-khalil-al-hussary-profile.png',
           baseUrl: 'https://everyayah.com/data/Husary_128kbps/',
           identifier: 'ar.husary',
           serverUrl: 'https://server13.mp3quran.net/husr/',
+          qiraah: 'حفص',
+        ),
+        const Reciter(
+          id: 'al_husary_warsh',
+          name: 'محمود خليل الحصري (ورش)',
+          subTitle: 'Al-Husary (Warsh)',
+          imageUrl:
+              'https://static.qurancdn.com/images/reciters/5/mahmoud-khalil-al-hussary-profile.png',
+          baseUrl: 'https://everyayah.com/data/Husary_Muallim_128kbps/', // Placeholder for Warsh data if specific not found
+          identifier: 'ar.husary.warsh',
+          serverUrl: 'https://server10.mp3quran.net/warsh/husr/',
+          qiraah: 'ورش',
+        ),
+        const Reciter(
+          id: 'yassin_warsh',
+          name: 'ياسين الجزائري (ورش)',
+          subTitle: 'Yassin Al-Jazaery (Warsh)',
+          imageUrl:
+              'https://static.qurancdn.com/images/reciters/reciter_placeholder.png',
+          baseUrl: 'https://everyayah.com/data/Yassin_Al_Jazaery_64kbps/',
+          identifier: 'ar.yassin_al_jazaery',
+          serverUrl: 'https://server12.mp3quran.net/yassin/',
+          qiraah: 'ورش',
         ),
         const Reciter(
           id: 'al_minshawi',
