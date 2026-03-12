@@ -4,17 +4,21 @@ import '../services/audio_service.dart';
 import '../services/audio_url_service.dart';
 import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
+import '../services/ayah_sync_service.dart';
+import '../utils/quran_page_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ويدجت مشغّل الصوت الخاصة بصفحات المصحف
 /// Audio player specific to the Mushaf page view
 class MushafAudioPlayer extends StatefulWidget {
   final int pageNumber;
+  final Function(int surah, int ayah) onAyahChanged;
   final VoidCallback onClose;
 
   const MushafAudioPlayer({
     super.key,
     required this.pageNumber,
+    required this.onAyahChanged,
     required this.onClose,
   });
 
@@ -29,6 +33,9 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   Duration _position = Duration.zero;
   bool _isError = false;
   Reciter? _selectedReciter;
+  List<Map<String, dynamic>> _verseTimings = [];
+  int _currentAyah = -1;
+  int _currentSurah = -1;
 
   @override
   void initState() {
@@ -55,6 +62,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     _audioService.positionStream.listen((p) {
       if (mounted) {
         setState(() => _position = p);
+        _updateCurrentAyah(p);
       }
     });
 
@@ -92,7 +100,33 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     setState(() => _isError = false);
     final url = _getPageAudioUrl(widget.pageNumber);
     debugPrint('Playing page audio: $url');
+    
+    // Load timings if we have a reciter
+    if (_selectedReciter != null) {
+      final surah = QuranPageHelper.getSurahForPage(widget.pageNumber);
+      _currentSurah = surah;
+      _verseTimings = await AyahSyncService().getVerseTimings(
+        surahNumber: surah,
+        reciter: _selectedReciter!,
+      );
+    }
+    
     await _audioService.playFromUrl(url);
+  }
+
+  void _updateCurrentAyah(Duration p) {
+    if (_verseTimings.isEmpty) return;
+
+    final ms = p.inMilliseconds;
+    for (var timing in _verseTimings) {
+      if (ms >= timing['timestampFrom'] && ms <= timing['timestampTo']) {
+        if (_currentAyah != timing['ayahNumber']) {
+          setState(() => _currentAyah = timing['ayahNumber']);
+          widget.onAyahChanged(_currentSurah, _currentAyah);
+        }
+        break;
+      }
+    }
   }
 
   String _formatDuration(Duration d) {

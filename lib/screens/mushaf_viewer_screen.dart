@@ -11,6 +11,10 @@ import '../services/streak_service.dart';
 import '../services/reading_stats_service.dart';
 import '../services/khatma_service.dart';
 import '../utils/quran_page_helper.dart';
+import '../services/ayah_sync_service.dart';
+import '../services/reading_service.dart';
+import '../models/ayah_coordinate.dart';
+import '../widgets/ayah_highlighter.dart';
 import 'tafseer_screen.dart';
 
 /// عارض المصحف المرئي (Mushaf Image Viewer)
@@ -29,11 +33,17 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
   int _currentPage = 1;
   bool _showAudioPlayer = false;
   String? _mushafDirPath;
+  String _currentReading = ReadingService.hafs;
   bool _isDownloaded = false;
   bool _showBars = true;
   bool _isLoading = true;
   String _currentSurahName = '';
   int _currentJuz = 1;
+  
+  // Highlighting state
+  int? _activeSurah;
+  int? _activeAyah;
+  List<AyahCoordinate> _pageCoordinates = [];
 
   @override
   void initState() {
@@ -47,16 +57,33 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
 
   Future<void> _initMushafDir() async {
     final prefs = await SharedPreferences.getInstance();
-    final isDownloaded = prefs.getBool('mushaf_downloaded') ?? false;
+    _currentReading = await ReadingService.getSelectedReading();
+    
+    // Check if the specific reading is downloaded
+    final isDownloaded = prefs.getBool('mushaf_downloaded_${_currentReading == ReadingService.hafs ? 'hafs' : 'warsh'}') ?? 
+                        (prefs.getBool('mushaf_downloaded') ?? false); // Fallback for old version
 
     if (isDownloaded) {
       final dir = await getApplicationDocumentsDirectory();
+      final readingFolder = _currentReading == ReadingService.hafs ? 'mushaf_hafs' : 'mushaf_warsh';
+      
+      // Fallback for old single-folder structure
+      final oldDir = Directory('${dir.path}/mushaf_pages');
+      final newDir = Directory('${dir.path}/$readingFolder');
+      
+      final finalPath = (await newDir.exists()) ? newDir.path : oldDir.path;
+
       if (mounted) {
         setState(() {
           _isDownloaded = true;
-          _mushafDirPath = '${dir.path}/mushaf_pages';
+          _mushafDirPath = finalPath;
         });
       }
+    } else {
+      setState(() {
+        _isDownloaded = false;
+        _mushafDirPath = null;
+      });
     }
   }
 
@@ -65,6 +92,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
     await _initMushafDir();
     _currentSurahName = QuranPageHelper.getSurahNameForPage(pageNumber);
     _currentJuz = QuranPageHelper.getJuzForPage(pageNumber);
+    
+    // Load coordinates for the new page
+    _pageCoordinates = await AyahSyncService().getPageCoordinates(pageNumber);
+    
     setState(() => _isLoading = false);
   }
 
@@ -127,6 +158,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                       onTap: () {
                         Navigator.pop(context);
                         setState(() => _showAudioPlayer = true);
+                      },
+                    ),
+                    _buildOptionButton(
+                      icon: Icons.swap_horiz_rounded,
+                      label: _currentReading == ReadingService.hafs ? 'رواية ورش' : 'رواية حفص',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final nextReading = _currentReading == ReadingService.hafs 
+                            ? ReadingService.warsh 
+                            : ReadingService.hafs;
+                        await ReadingService.setSelectedReading(nextReading);
+                        await _loadPageData(_currentPage);
                       },
                     ),
                     _buildOptionButton(
@@ -257,6 +300,17 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                               children: [
                                 Container(color: Colors.white),
                                 _buildPageImage(pageNumber),
+
+                                // Highlight layer
+                                if (_currentPage == pageNumber &&
+                                    _activeAyah != null)
+                                  AyahHighlighter(
+                                    coordinates: _pageCoordinates
+                                        .where((c) =>
+                                            c.surahNumber == _activeSurah &&
+                                            c.ayahNumber == _activeAyah)
+                                        .toList(),
+                                  ),
                               ],
                             ),
                           ),
@@ -291,7 +345,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen> {
                       right: 0,
                       child: MushafAudioPlayer(
                         pageNumber: _currentPage,
-                        onClose: () => setState(() => _showAudioPlayer = false),
+                        onAyahChanged: (surah, ayah) {
+                          setState(() {
+                            _activeSurah = surah;
+                            _activeAyah = ayah;
+                          });
+                        },
+                        onClose: () {
+                          setState(() {
+                            _showAudioPlayer = false;
+                            _activeAyah = null;
+                            _activeSurah = null;
+                          });
+                        },
                       ),
                     ),
                 ],

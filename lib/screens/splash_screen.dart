@@ -5,6 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:tala_quran_app/screens/main_nav_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/bookmark_service.dart';
+import '../services/reading_service.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 /// شاشة البداية المتحركة — Animated Quran-Opening Splash
 /// 3 Phases: Logo → Book Opening → Page Flip → Navigate
@@ -33,8 +36,10 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _pageFlip;
 
   // State
-  int _phase = 0; // 0=logo, 1=book, 2=pages, 3=navigate
   int _lastReadPage = 1;
+  int _phase = 0; // 0=logo, 1=book, 2=pages, 3=navigate
+  String _currentReading = ReadingService.hafs;
+  String? _mushafDirPath;
 
   @override
   void initState() {
@@ -68,14 +73,28 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Precache the logo to avoid JANK during first frame
+    // Precache assets to avoid JANK
     precacheImage(const AssetImage('assets/images/logo.png'), context);
+    precacheImage(const AssetImage('assets/images/quran_logo.png'), context);
   }
 
   Future<void> _startSequence() async {
-    // تحميل أخر قراءة في الخلفية
+    // تحميل أخر قراءة والرواية الحالية
     final lastRead = await BookmarkService.getLastRead();
     _lastReadPage = lastRead?['pageNumber'] ?? 1;
+    _currentReading = await ReadingService.getSelectedReading();
+
+    // التحقق من وجود ملفات محملة للمعاينة
+    final dir = await getApplicationDocumentsDirectory();
+    final folderName = _currentReading == ReadingService.hafs ? 'mushaf_hafs' : 'mushaf_warsh';
+    final path = Directory('${dir.path}/$folderName');
+    if (await path.exists()) {
+      _mushafDirPath = path.path;
+    } else {
+      // Fallback to old path
+      final oldPath = Directory('${dir.path}/mushaf_pages');
+      if (await oldPath.exists()) _mushafDirPath = oldPath.path;
+    }
 
     // المرحلة الأولى: اللوجو
     _logoController.forward();
@@ -148,12 +167,15 @@ class _SplashScreenState extends State<SplashScreen>
                   child: _buildLogoPhase(),
                 ),
 
-                // الكتاب (يتحرك في الاتجاه العربي - يفتح جهة اليمين)
+                // المصحف ثلاثي الأبعاد (يفتح ويقترب)
                 if (_phase >= 1)
-                  Opacity(
-                    opacity: _phase <= 2
-                        ? 1.0
-                        : (1.0 - _pageFlip.value).clamp(0.0, 1.0),
+                  ScaleTransition(
+                    scale: Tween<double>(begin: 0.8, end: 1.1).animate(
+                      CurvedAnimation(
+                        parent: _bookController,
+                        curve: Curves.easeOutQuart,
+                      ),
+                    ),
                     child: _buildBookPhase(size),
                   ),
 
@@ -205,31 +227,18 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Widget _buildLogoPhase() {
-    return FadeTransition(
-      opacity: _logoFade,
-      child: ScaleTransition(
-        scale: _logoScale,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _LogoImage(),
-            const SizedBox(height: 40),
-            Text(
-              'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
-              style: GoogleFonts.amiri(
-                fontSize: 28,
-                color: AppColors.gold,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
+    return ScaleTransition(
+      scale: _logoScale,
+      child: FadeTransition(
+        opacity: _logoFade,
+        child: const _LogoImage(),
       ),
     );
   }
 
   Widget _buildBookPhase(Size size) {
-    final bookWidth = size.width * 0.85;
+    // حجم المصحف في المنتصف (80% من العرض)
+    final bookWidth = size.width * 0.8;
     final bookHeight = bookWidth * 1.4;
 
     return AnimatedBuilder(
@@ -244,45 +253,39 @@ class _SplashScreenState extends State<SplashScreen>
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // الصفحة الأساسية (ثابتة تحت الغلاف)
+              // الصفحة الأساسية (صورة الصفحة الفعلية)
               _BookPage(
                 width: bookWidth,
                 height: bookHeight,
                 isCoverSide: false,
-                showContent: progress > 0.6 || _phase >= 2,
+                showContent: progress > 0.5,
+                pageNumber: _lastReadPage,
+                reading: _currentReading,
+                dirPath: _mushafDirPath,
               ),
 
-              // الغلاف (يفتح لجهة اليمين - اتجاه عربي)
+              // الغلاف (يفتح بزاوية 3D)
               Transform(
                 alignment: Alignment.centerRight,
                 transform: Matrix4.identity()
                   ..setEntry(3, 2, 0.001)
-                  ..rotateY(-(progress * pi * 0.85)), // يفتح بزاوية واسعة
+                  ..rotateY(-(progress * pi * 0.85)),
                 child: Opacity(
-                  opacity: (1.0 - progress * 1.5).clamp(0.0, 1.0),
+                  opacity: (1.0 - progress * 1.6).clamp(0.0, 1.0),
                   child: _BookPage(
                     width: bookWidth,
                     height: bookHeight,
                     isCoverSide: true,
                     showContent: false,
                     coverProgress: progress,
+                    reading: _currentReading,
                   ),
                 ),
               ),
 
-              // صفحات تتقلب
+              // تأثير تقليب صفحات خفيف
               if (_phase == 2)
                 ..._buildFlippingPages(flipProgress, bookWidth, bookHeight),
-
-              // مؤشر رقم الصفحة
-              if (_phase >= 2)
-                Positioned(
-                  bottom: 30,
-                  child: FadeTransition(
-                    opacity: _pageFlip,
-                    child: _PageLabel(lastRead: _lastReadPage),
-                  ),
-                ),
             ],
           ),
         );
@@ -290,15 +293,12 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  List<Widget> _buildFlippingPages(
-      double progress, double width, double height) {
-    const pageCount = 2; // تقليل العدد للواقعية في الصفحة الواحدة
+  List<Widget> _buildFlippingPages(double progress, double width, double height) {
+    const pageCount = 2;
     return List.generate(pageCount, (i) {
-      final delay = i * 0.3;
-      final pageProgress = ((progress - delay) / 0.7).clamp(0.0, 1.0);
-      if (pageProgress <= 0 || pageProgress >= 1.0) {
-        return const SizedBox.shrink();
-      }
+      final delay = i * 0.2;
+      final pageProgress = ((progress - delay) / 0.8).clamp(0.0, 1.0);
+      if (pageProgress <= 0 || pageProgress >= 1.0) return const SizedBox.shrink();
 
       return Transform(
         alignment: Alignment.centerRight,
@@ -306,7 +306,14 @@ class _SplashScreenState extends State<SplashScreen>
           ..setEntry(3, 2, 0.001)
           ..rotateY(-(pageProgress * pi * 0.85)),
         child: _BookPage(
-            width: width, height: height, isCoverSide: false, showContent: true),
+          width: width,
+          height: height,
+          isCoverSide: false,
+          showContent: true,
+          pageNumber: _lastReadPage + 1,
+          reading: _currentReading,
+          dirPath: _mushafDirPath,
+        ),
       );
     });
   }
@@ -380,6 +387,9 @@ class _BookPage extends StatelessWidget {
   final bool isCoverSide;
   final bool showContent;
   final double coverProgress;
+  final int pageNumber;
+  final String reading;
+  final String? dirPath;
 
   const _BookPage({
     required this.width,
@@ -387,6 +397,9 @@ class _BookPage extends StatelessWidget {
     required this.isCoverSide,
     required this.showContent,
     this.coverProgress = 0,
+    this.pageNumber = 1,
+    this.reading = ReadingService.hafs,
+    this.dirPath,
   });
 
   @override
@@ -395,16 +408,25 @@ class _BookPage extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: isCoverSide ? AppColors.emerald : const Color(0xFFFFFDF0),
+        color: isCoverSide ? AppColors.emerald : AppColors.cream,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: AppColors.gold.withValues(alpha: 0.6), width: 3),
+        border: Border.all(
+          color: AppColors.gold.withValues(alpha: 0.8),
+          width: isCoverSide ? 4 : 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(5, 5),
+          ),
+        ],
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
           if (isCoverSide) _buildCoverOrnament(),
-          if (showContent) const _PageLines(),
+          if (showContent) _buildPageContent(),
           Container(
             margin: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -419,22 +441,57 @@ class _BookPage extends StatelessWidget {
   }
 
   Widget _buildCoverOrnament() {
-    return Opacity(
-      opacity: (1.0 - coverProgress * 2.5).clamp(0.0, 1.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.auto_awesome, color: AppColors.gold, size: 50),
-          const SizedBox(height: 20),
-          Text(
-            'القرآن\nالكريم',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.amiri(
-                color: AppColors.gold,
-                fontSize: 32,
-                fontWeight: FontWeight.bold),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.emerald,
+            AppColors.emerald.withValues(alpha: 0.9),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Opacity(
+          opacity: (1.0 - coverProgress * 2.5).clamp(0.0, 1.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Image(
+                image: AssetImage('assets/images/quran_logo.png'),
+                width: 120,
+                height: 120,
+              ),
+              const SizedBox(height: 15),
+              Text(
+                'القرآن الكريم',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.amiri(
+                  color: AppColors.gold,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageContent() {
+    // محاولة عرض الصفحة الفعلية من المصحف
+    final pageStr = pageNumber.toString().padLeft(3, '0');
+    return Container(
+      color: AppColors.cream,
+      child: Image.asset(
+        'assets/mushaf/page$pageStr.png',
+        fit: BoxFit.fill,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback if page image doesn't exist (e.g. only 5 pages in assets)
+          return const _PageLines();
+        },
       ),
     );
   }
@@ -467,30 +524,6 @@ class _PageLines extends StatelessWidget {
                   color: AppColors.emerald.withValues(alpha: 0.1)),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _PageLabel extends StatelessWidget {
-  final int lastRead;
-  const _PageLabel({required this.lastRead});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.emerald.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10)
-        ],
-      ),
-      child: Text(
-        'فتح صفحة $lastRead',
-        style: GoogleFonts.amiri(
-            color: AppColors.gold, fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
   }
