@@ -4,8 +4,17 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize push notifications and verse database
+  await NotificationService.initialize();
+
+  // Try refreshing verse database from internet (non-blocking)
+  NotificationService.refreshVerseDb();
+
   runApp(const TalaQuranApp());
 }
 

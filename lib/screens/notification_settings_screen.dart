@@ -18,6 +18,9 @@ class _NotificationSettingsScreenState
   bool _morning = true;
   bool _evening = true;
   bool _wird = true;
+  bool _dailyVerse = true;
+  int _morningHour = 6;
+  int _eveningHour = 20;
   bool _isLoading = true;
 
   @override
@@ -30,29 +33,53 @@ class _NotificationSettingsScreenState
     final settings = await NotificationService.getSettings();
     if (mounted) {
       setState(() {
-        _enabled = settings['enabled']!;
-        _morning = settings['morning']!;
-        _evening = settings['evening']!;
-        _wird = settings['wird']!;
+        _enabled = settings['enabled'] as bool;
+        _morning = settings['morning'] as bool;
+        _evening = settings['evening'] as bool;
+        _wird = settings['wird'] as bool;
+        _dailyVerse = settings['dailyVerse'] as bool;
+        _morningHour = settings['morningHour'] as int;
+        _eveningHour = settings['eveningHour'] as int;
         _isLoading = false;
       });
     }
   }
 
-  Future<void> _saveSetting(String key, bool value) async {
-    switch (key) {
-      case 'enabled':
-        await NotificationService.saveSettings(enabled: value);
-        break;
-      case 'morning':
-        await NotificationService.saveSettings(morning: value);
-        break;
-      case 'evening':
-        await NotificationService.saveSettings(evening: value);
-        break;
-      case 'wird':
-        await NotificationService.saveSettings(wird: value);
-        break;
+  Future<void> _pickTime(String type) async {
+    final initialHour = type == 'morning' ? _morningHour : _eveningHour;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: 0),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.gold,
+              onPrimary: Colors.black,
+              surface: AppColors.cardBackground,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: child!,
+          ),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (type == 'morning') {
+          _morningHour = picked.hour;
+        } else {
+          _eveningHour = picked.hour;
+        }
+      });
+      await NotificationService.saveSettings(
+        morningHour: type == 'morning' ? picked.hour : null,
+        eveningHour: type == 'evening' ? picked.hour : null,
+      );
     }
   }
 
@@ -86,95 +113,65 @@ class _NotificationSettingsScreenState
             : ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  // رسالة ترحيبية — Welcome message
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.emerald.withValues(alpha: 0.15),
-                          AppColors.gold.withValues(alpha: 0.05),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text('🔔', style: TextStyle(fontSize: 40)),
-                        const SizedBox(height: 12),
-                        Text(
-                          'إشعارات ذكية تذكّرك بالقرآن',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.amiri(
-                            color: AppColors.gold,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'رسائل تحفيزية متنوعة تبعث في قلبك حب القرآن',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.amiri(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // رسالة ترحيبية
+                  _buildWelcomeCard(),
                   const SizedBox(height: 24),
 
-                  // التفعيل العام — Master toggle
+                  // التفعيل العام
                   _buildToggleCard(
                     icon: Icons.notifications_active_rounded,
                     title: 'تفعيل الإشعارات',
-                    subtitle: 'التحكم في جميع الإشعارات',
+                    subtitle: 'التحكم في جميع الإشعارات الخارجية',
                     value: _enabled,
                     isPrimary: true,
                     onChanged: (val) {
                       setState(() => _enabled = val);
-                      _saveSetting('enabled', val);
+                      NotificationService.saveSettings(enabled: val);
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  // إشعارات الصباح — Morning
+                  // الإشعارات الفرعية
                   AnimatedOpacity(
                     opacity: _enabled ? 1.0 : 0.3,
                     duration: const Duration(milliseconds: 300),
                     child: Column(
                       children: [
+                        // إشعارات الصباح + وقت
                         _buildToggleCard(
                           icon: Icons.wb_sunny_rounded,
                           title: 'إشعارات الصباح',
-                          subtitle: 'رسائل تحفيزية عند الاستيقاظ',
+                          subtitle: 'الساعة ${_formatHour(_morningHour)}',
                           value: _morning,
+                          showTimePicker: true,
+                          timeType: 'morning',
                           onChanged: _enabled
                               ? (val) {
                                   setState(() => _morning = val);
-                                  _saveSetting('morning', val);
+                                  NotificationService.saveSettings(morning: val);
                                 }
                               : null,
                         ),
                         const SizedBox(height: 12),
 
-                        // إشعارات المساء — Evening
+                        // إشعارات المساء + وقت
                         _buildToggleCard(
                           icon: Icons.nightlight_round,
                           title: 'إشعارات المساء',
-                          subtitle: 'تذكير قبل النوم بالقراءة',
+                          subtitle: 'الساعة ${_formatHour(_eveningHour)}',
                           value: _evening,
+                          showTimePicker: true,
+                          timeType: 'evening',
                           onChanged: _enabled
                               ? (val) {
                                   setState(() => _evening = val);
-                                  _saveSetting('evening', val);
+                                  NotificationService.saveSettings(evening: val);
                                 }
                               : null,
                         ),
                         const SizedBox(height: 12),
 
-                        // تذكير الورد — Wird
+                        // تذكير الورد
                         _buildToggleCard(
                           icon: Icons.local_fire_department_rounded,
                           title: 'تذكير الورد اليومي',
@@ -183,7 +180,22 @@ class _NotificationSettingsScreenState
                           onChanged: _enabled
                               ? (val) {
                                   setState(() => _wird = val);
-                                  _saveSetting('wird', val);
+                                  NotificationService.saveSettings(wird: val);
+                                }
+                              : null,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // آية اليوم
+                        _buildToggleCard(
+                          icon: Icons.auto_awesome,
+                          title: 'آية اليوم',
+                          subtitle: 'آية قرآنية مؤثرة كل يوم',
+                          value: _dailyVerse,
+                          onChanged: _enabled
+                              ? (val) {
+                                  setState(() => _dailyVerse = val);
+                                  NotificationService.saveSettings(dailyVerse: val);
                                 }
                               : null,
                         ),
@@ -192,9 +204,9 @@ class _NotificationSettingsScreenState
                   ),
                   const SizedBox(height: 32),
 
-                  // معاينة الإشعارات — Preview
+                  // معاينة الإشعارات
                   Text(
-                    'معاينة الإشعارات',
+                    'أنواع الإشعارات',
                     style: GoogleFonts.amiri(
                       color: AppColors.gold,
                       fontSize: 20,
@@ -202,23 +214,61 @@ class _NotificationSettingsScreenState
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _buildPreviewCard(
-                    '🌅 رسالة صباحية',
-                    NotificationService.morningMessages[0]['body']!,
-                  ),
+                  _buildPreviewCard('📖 القرآن يناديك', NotificationService.getQuranCallsYou()['body']!),
                   const SizedBox(height: 8),
-                  _buildPreviewCard(
-                    '🌙 رسالة مسائية',
-                    NotificationService.eveningMessages[0]['body']!,
-                  ),
+                  _buildPreviewCard('💚 القرآن يخاطبك', NotificationService.getQuranSpeaksToYou()['body']!),
                   const SizedBox(height: 8),
-                  _buildPreviewCard(
-                    '🔥 تذكير الورد',
-                    NotificationService.wirdMessages[0]['body']!,
-                  ),
+                  _buildPreviewCard('✨ آية اليوم', NotificationService.getDailyVerse()['body']!),
+                  const SizedBox(height: 8),
+                  _buildPreviewCard('🔥 تذكير الورد', NotificationService.getSmartMessage()['body']!),
                   const SizedBox(height: 40),
                 ],
               ),
+      ),
+    );
+  }
+
+  String _formatHour(int hour) {
+    final period = hour >= 12 ? 'م' : 'ص';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    return '$displayHour:00 $period';
+  }
+
+  Widget _buildWelcomeCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.emerald.withValues(alpha: 0.15),
+            AppColors.gold.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          const Text('🔔', style: TextStyle(fontSize: 40)),
+          const SizedBox(height: 12),
+          Text(
+            'إشعارات ذكية تذكّرك بالقرآن',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.amiri(
+              color: AppColors.gold,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'آيات وتذكيرات تصلك حتى عندما يكون التطبيق مغلقاً',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.amiri(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -229,6 +279,8 @@ class _NotificationSettingsScreenState
     required String subtitle,
     required bool value,
     bool isPrimary = false,
+    bool showTimePicker = false,
+    String? timeType,
     ValueChanged<bool>? onChanged,
   }) {
     return Container(
@@ -267,12 +319,38 @@ class _NotificationSettingsScreenState
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.amiri(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.amiri(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (showTimePicker && onChanged != null) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _pickTime(timeType!),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.gold.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'تغيير',
+                            style: GoogleFonts.amiri(
+                              color: AppColors.gold,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
