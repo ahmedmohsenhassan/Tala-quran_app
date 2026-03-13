@@ -8,6 +8,7 @@ import '../services/bookmark_service.dart';
 import '../services/reading_service.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'mushaf_viewer_screen.dart';
 
 // ============================================================
 //  Premium Colors for Splash
@@ -20,7 +21,6 @@ const Color _kLightGold = Color(0xFFE8C76A);
 const Color _kDarkGold = Color(0xFFB8860B);
 const Color _kParchment = Color(0xFFFDF5E6);
 const Color _kParchmentDark = Color(0xFFF5E6C8);
-const Color _kSpineGreen = Color(0xFF041C14);
 
 /// شاشة البداية الاحترافية — Premium Quran-Opening Splash
 /// مصحف ثلاثي الأبعاد واقعي يفتح ببطء كأنك تفتح مصحف حقيقي
@@ -111,7 +111,7 @@ class _SplashScreenState extends State<SplashScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     precacheImage(const AssetImage('assets/images/logo.png'), context);
-    precacheImage(const AssetImage('assets/images/quran_logo.png'), context);
+    precacheImage(const AssetImage('assets/images/quran_logo_premium.png'), context);
   }
 
   Future<void> _startSequence() async {
@@ -162,15 +162,26 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const MainDashboardScreen(),
-          transitionDuration: const Duration(milliseconds: 800),
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
-        ),
-      );
+      
+      if (_lastReadPage > 1) {
+        // First, set the Dashboard as the new root
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+        );
+        // Then push Mushaf on top of it
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MushafViewerScreen(initialPage: _lastReadPage),
+          ),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+        );
+      }
     }
   }
 
@@ -395,13 +406,13 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // === Spine ===
+          // === Spine (Moved to the right for RTL flow) ===
           Positioned(
-            left: 0,
+            right: 0,
             top: 0,
             bottom: 0,
             child: _BookSpine(
-              width: 16,
+              width: 18,
               height: bookHeight,
               openProgress: coverProgress,
             ),
@@ -659,19 +670,12 @@ class _PremiumBookCover extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CustomPaint(
-                      size: const Size(74, 74),
-                      painter: _MedallionOrnamentPainter(),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'القرآن\nالكريم',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.amiri(
-                        color: _kRichGold,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        height: 1.2,
+                    ClipOval(
+                      child: Image.asset(
+                        'assets/images/quran_logo_premium.png',
+                        width: 90,
+                        height: 90,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ],
@@ -861,43 +865,55 @@ class _BookSpine extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            _kSpineGreen,
-            _kCoverDark.withValues(alpha: 0.95),
-            _kCoverGreen.withValues(alpha: 0.8),
-          ],
-        ),
-        border: Border(
-          left: BorderSide(
-              color: _kRichGold.withValues(alpha: 0.7), width: 2),
-          right: BorderSide(
-              color: _kRichGold.withValues(alpha: 0.4), width: 1),
-        ),
+        color: const Color(0xFF1E3516), // Dark Green Spine
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.5),
             blurRadius: 10,
-            offset: const Offset(-3, 0),
+            offset: const Offset(2, 0), // Shadow towards the pages
           ),
         ],
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Color(0xFF1B2E13),
+            Color(0xFF2D4F1E),
+            Color(0xFF1B2E13),
+          ],
+        ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Container(width: 8, height: 0.5, color: _kRichGold.withValues(alpha: 0.4)),
-          const SizedBox(height: 4),
+          // Vertical Gold Line
           Container(
-            width: 3, height: 3,
+            width: 1.5,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _kRichGold.withValues(alpha: 0.5),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  _kRichGold.withValues(alpha: 0.8),
+                  _kRichGold.withValues(alpha: 0.8),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 4),
-          Container(width: 8, height: 0.5, color: _kRichGold.withValues(alpha: 0.4)),
+          // Small decorative dots
+          Column(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(4, (index) => Container(
+              width: 4,
+              height: 4,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kRichGold,
+              ),
+            )),
+          ),
         ],
       ),
     );
@@ -1222,70 +1238,3 @@ class _GoldParticlesPainter extends CustomPainter {
 }
 
 /// زخرفة الميدالية المركزية - Islamic Medallion Ornament
-class _MedallionOrnamentPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final paint = Paint()
-      ..color = _kRichGold.withValues(alpha: 0.8)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    final outerRadius = size.width * 0.45;
-    final innerRadius = size.width * 0.25;
-
-    // Draw 8-pointed star (Rub el Hizb style)
-    final path = Path();
-    for (int i = 0; i < 8; i++) {
-      final angle = i * pi / 4;
-      final x = center.dx + outerRadius * cos(angle);
-      final y = center.dy + outerRadius * sin(angle);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-
-      final midAngle = angle + pi / 8;
-      final mx = center.dx + innerRadius * cos(midAngle);
-      final my = center.dy + innerRadius * sin(midAngle);
-      path.lineTo(mx, my);
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-
-    // Draw 2nd rotated star
-    final path2 = Path();
-    for (int i = 0; i < 8; i++) {
-      final angle = (i * pi / 4) + pi / 8;
-      final x = center.dx + outerRadius * 0.8 * cos(angle);
-      final y = center.dy + outerRadius * 0.8 * sin(angle);
-      if (i == 0) {
-        path2.moveTo(x, y);
-      } else {
-        path2.lineTo(x, y);
-      }
-
-      final midAngle = angle + pi / 8;
-      final mx = center.dx + innerRadius * 0.7 * cos(midAngle);
-      final my = center.dy + innerRadius * 0.7 * sin(midAngle);
-      path2.lineTo(mx, my);
-    }
-    path2.close();
-    canvas.drawPath(path2, paint..color = _kRichGold.withValues(alpha: 0.4));
-
-    // Decorative dots
-    for (int i = 0; i < 8; i++) {
-      final angle = i * pi / 4;
-      final x = center.dx + outerRadius * 1.1 * cos(angle);
-      final y = center.dy + outerRadius * 1.1 * sin(angle);
-      canvas.drawCircle(Offset(x, y), 1.5, Paint()..color = _kRichGold.withValues(alpha: 0.6));
-    }
-
-    // Inner circle
-    canvas.drawCircle(center, innerRadius * 0.5, Paint()..style = PaintingStyle.fill..color = _kRichGold.withValues(alpha: 0.2));
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:dio/dio.dart';
 
@@ -42,7 +42,7 @@ class NotificationService {
 
   /// تهيئة النظام — Initialize notification system
   static Future<void> initialize() async {
-    // Initialize timezone
+    // Initialize timezone (using latest_10y for faster startup)
     tz_data.initializeTimeZones();
     try {
       final timezoneName = await FlutterTimezone.getLocalTimezone();
@@ -100,7 +100,10 @@ class NotificationService {
       // يمكن تغيير الرابط لاحقاً إلى Firebase أو GitHub Gist
       final response = await dio.get(
         'https://raw.githubusercontent.com/ahmedmohsenhassan/tala-quran-data/main/notification_verses.json',
-        options: Options(receiveTimeout: const Duration(seconds: 10)),
+        options: Options(
+          receiveTimeout: const Duration(seconds: 10),
+          validateStatus: (status) => status != null && (status < 500), // Handle 404 manually
+        ),
       );
 
       if (response.statusCode == 200 && response.data != null) {
@@ -120,9 +123,13 @@ class NotificationService {
               'verse_db_cache', json.encode(newData));
           debugPrint('Verse DB updated to version $newVersion');
         }
+      } else if (response.statusCode == 404) {
+        debugPrint('Verse DB not found on server (404) - Using local/cached version');
       }
     } catch (e) {
-      debugPrint('Verse DB refresh failed (offline?): $e');
+      if (e is! DioException || e.response?.statusCode != 404) {
+        debugPrint('Verse DB refresh failed: $e');
+      }
       // Try loading from cache
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString('verse_db_cache');

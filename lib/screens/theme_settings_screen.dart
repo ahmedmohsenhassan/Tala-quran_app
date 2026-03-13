@@ -17,6 +17,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
   String _currentThemeMode = ThemeMode.dark.name;
   String _currentColorTheme = ThemeService.colorEmerald;
   String _currentFontTheme = ThemeService.fontAmiri;
+  String _currentMushafTheme = ThemeService.mushafClassic;
   double _currentFontSizeMultiplier = 1.0;
   bool _isTranslationEnabled = false;
   int _currentTranslationLang = TranslationService.langEnglish;
@@ -32,6 +33,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     final mode = await ThemeService.getThemeMode();
     final color = await ThemeService.getThemeColor();
     final font = await ThemeService.getThemeFont();
+    final mushafTheme = await ThemeService.getMushafTheme();
     final fontSize = await ThemeService.getFontSizeMultiplier();
     final isTransEnabled = await TranslationService.isTranslationEnabled();
     final transLang = await TranslationService.getTranslationLanguage();
@@ -41,6 +43,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         _currentThemeMode = mode;
         _currentColorTheme = color;
         _currentFontTheme = font;
+        _currentMushafTheme = mushafTheme;
         _currentFontSizeMultiplier = fontSize;
         _isTranslationEnabled = isTransEnabled;
         _currentTranslationLang = transLang;
@@ -98,6 +101,11 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     fontNotifier.value = newFont;
   }
 
+  void _onMushafThemeChanged(String newTheme) async {
+    setState(() => _currentMushafTheme = newTheme);
+    await ThemeService.setMushafTheme(newTheme);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -136,6 +144,13 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
             _buildSectionTitle('وضع الشاشة', Icons.brightness_6_rounded),
             const SizedBox(height: 16),
             _buildModeSelector(),
+
+            const SizedBox(height: 32),
+
+            // 1.5. Mushaf Premium Themes (New Selection)
+            _buildSectionTitle('المظهر (الثيم)', Icons.auto_awesome_rounded),
+            const SizedBox(height: 16),
+            _buildMushafThemeSelector(),
 
             const SizedBox(height: 32),
 
@@ -578,6 +593,188 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMushafThemeSelector() {
+    return SizedBox(
+      height: 220,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _buildMushafThemeCard(
+            title: 'كلاسيكي',
+            theme: ThemeService.mushafClassic,
+            primaryColor: const Color(0xFF03251D),
+            secondaryColor: const Color(0xFFFDF5E6),
+            isPremium: false,
+          ),
+          const SizedBox(width: 16),
+          _buildMushafThemeCard(
+            title: 'المذهّب',
+            theme: ThemeService.mushafPremium,
+            primaryColor: const Color(0xFF33270F),
+            secondaryColor: const Color(0xFFFFD700),
+            isPremium: true,
+            badge: 'مميز',
+          ),
+          const SizedBox(width: 16),
+          _buildMushafThemeCard(
+            title: 'ليلي مريح',
+            theme: ThemeService.mushafDark,
+            primaryColor: const Color(0xFF05110E),
+            secondaryColor: const Color(0xFF1E3516),
+            isPremium: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMushafThemeCard({
+    required String title,
+    required String theme,
+    required Color primaryColor,
+    required Color secondaryColor,
+    bool isPremium = false,
+    String? badge,
+  }) {
+    final bool isSelected = _currentMushafTheme == theme;
+
+    return GestureDetector(
+      onTap: () => _onMushafThemeChanged(theme),
+      child: Container(
+        width: 140,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.gold : Colors.white.withValues(alpha: 0.05),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.gold.withValues(alpha: 0.2),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  )
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            // Preview Image / Icon
+            Expanded(
+              child: Stack(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [primaryColor, primaryColor.withValues(alpha: 0.8)],
+                      ),
+                      border: Border.all(
+                        color: secondaryColor.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.menu_book_rounded,
+                        color: isPremium ? AppColors.gold : Colors.white24,
+                        size: 40,
+                      ),
+                    ),
+                  ),
+                  if (badge != null)
+                    Positioned(
+                      top: 15,
+                      right: 15,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFD700).withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 4,
+                            )
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, color: Color(0xFF634D00), size: 10),
+                            const SizedBox(width: 4),
+                            Text(
+                              badge,
+                              style: GoogleFonts.amiri(
+                                color: const Color(0xFF634D00),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            
+            // Text and Button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Column(
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.amiri(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: isSelected
+                            ? [
+                                const Color(0xFFFFD700),
+                                const Color(0xFFD4A947),
+                              ]
+                            : [
+                                Colors.white.withValues(alpha: 0.1),
+                                Colors.white.withValues(alpha: 0.05),
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        isSelected ? 'استخدم' : 'احصل',
+                        style: GoogleFonts.amiri(
+                          color: isSelected ? const Color(0xFF4A3B00) : AppColors.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

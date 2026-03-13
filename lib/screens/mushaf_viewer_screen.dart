@@ -1,10 +1,10 @@
+import 'dart:math' as math;
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +26,53 @@ import 'tafseer_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
+import '../services/theme_service.dart';
+
+// ============================================================
+//  PREMIUM COLORS & THEME HELPERS
+// ============================================================
+String _currentTheme = ThemeService.mushafClassic;
+
+Color get _deepGreen {
+  switch (_currentTheme) {
+    case ThemeService.mushafPremium: return const Color(0xFF33270F);
+    case ThemeService.mushafDark: return const Color(0xFF05110E);
+    default: return const Color(0xFF031E17);
+  }
+}
+
+Color get _richGold {
+  switch (_currentTheme) {
+    case ThemeService.mushafDark: return const Color(0xFFD4A947).withValues(alpha: 0.6);
+    default: return const Color(0xFFD4A947);
+  }
+}
+
+Color get _lightGold {
+  return _richGold.withValues(alpha: 0.8);
+}
+
+Color get _darkGold {
+  return _richGold.withValues(alpha: 1.2);
+}
+
+Color get _parchment {
+  switch (_currentTheme) {
+    case ThemeService.mushafPremium: return const Color(0xFFFFF8E1);
+    case ThemeService.mushafDark: return const Color(0xFFE0E0E0);
+    default: return const Color(0xFFFDF5E6);
+  }
+}
+
+Color get _parchmentDark {
+  switch (_currentTheme) {
+    case ThemeService.mushafPremium: return const Color(0xFFFFECB3);
+    case ThemeService.mushafDark: return const Color(0xFFBDBDBD);
+    default: return const Color(0xFFF5E6C8);
+  }
+}
+
+const Color _pageShadow = Color(0x33000000);
 
 /// Premium Mushaf Viewer — عارض المصحف الاحترافي
 /// A realistic, premium 3D Quran viewer experience
@@ -92,6 +139,16 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    _loadTheme();
+  }
+
+  Future<void> _loadTheme() async {
+    final theme = await ThemeService.getMushafTheme();
+    if (mounted) {
+      setState(() {
+        _currentTheme = theme;
+      });
+    }
   }
 
   Future<void> _initMushafDir() async {
@@ -184,24 +241,17 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   }
 
   // ============================================================
-  //  PREMIUM COLORS
-  // ============================================================
-  Color get _deepGreen => AppColors.background;
-  static const Color _richGold = Color(0xFFD4A947);
-  static const Color _lightGold = Color(0xFFE8C76A);
-  static const Color _darkGold = Color(0xFFB8860B);
-  static const Color _parchment = Color(0xFFFDF5E6);
-  static const Color _parchmentDark = Color(0xFFF5E6C8);
-  Color get _spineColor => AppColors.cardBackground;
-  static const Color _pageShadow = Color(0x33000000);
-
-  // ============================================================
   //  BUILD
   // ============================================================
   @override
   Widget build(BuildContext context) {
+    final kidsMode = Provider.of<KidsModeService>(context);
+    final isKids = kidsMode.isKidsModeActive;
+    final primaryColor = isKids ? kidsMode.primaryColor : _richGold;
+    final bgColor = isKids ? kidsMode.backgroundColor : _deepGreen;
+
     return Scaffold(
-      backgroundColor: _deepGreen,
+      backgroundColor: bgColor,
       body: _isLoading
           ? _buildLoadingState()
           : GestureDetector(
@@ -209,7 +259,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               child: Stack(
                 children: [
                   // === الخلفية المزخرفة ===
-                  const Positioned.fill(child: _PremiumBackground()),
+                  if (!isKids) const Positioned.fill(child: _PremiumBackground()),
 
                   // === إطار المصحف الخارجي ===
                   Positioned.fill(
@@ -217,10 +267,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   ),
 
                   // === الشريط العلوي ===
-                  _buildPremiumTopBar(),
+                  _buildPremiumTopBar(isKids: isKids, kidsMode: kidsMode),
 
                   // === الشريط السفلي ===
-                  _buildPremiumBottomBar(),
+                  _buildPremiumBottomBar(isKids: isKids, kidsMode: kidsMode),
 
                   // === مشغل الصوت ===
                   Positioned(
@@ -278,32 +328,31 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                         },
                         child: FloatingActionButton(
                           onPressed: () => _openAITajweedLab(),
-                          backgroundColor: AppColors.gold,
+                          backgroundColor: isKids ? primaryColor : AppColors.gold,
                           elevation: 8,
-                          child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 30),
+                          child: Icon(isKids ? Icons.face_rounded : Icons.psychology_rounded, color: Colors.white, size: 30),
                         ),
                       ),
                     ),
                   // === زر التعرّف على التلاوة (🎙️) ===
                   if (_showBars && !_showAudioPlayer)
                     Positioned(
-                      bottom: 100,
-                      left: 24,
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: const Duration(milliseconds: 600),
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: child,
-                          );
-                        },
-                        child: FloatingActionButton(
-                          onPressed: () => _recognizeCurrentRecitation(),
-                          backgroundColor: Colors.blueAccent,
-                          elevation: 8,
-                          child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 30),
-                        ),
+                    bottom: 100,
+                    left: 24,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 600),
+                      builder: (context, value, child) {
+                        return Transform.scale(
+                          scale: value,
+                          child: child,
+                        );
+                      },
+                      child: FloatingActionButton(
+                        onPressed: () => _recognizeCurrentRecitation(),
+                        backgroundColor: Colors.blueAccent,
+                        elevation: 8,
+                        child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 30),
                       ),
                     ),
                 ],
@@ -387,7 +436,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               shape: BoxShape.circle,
               border: Border.all(color: _richGold.withValues(alpha: 0.3), width: 2),
             ),
-            child: const CircularProgressIndicator(
+            child: CircularProgressIndicator(
               color: _richGold,
               strokeWidth: 3,
             ),
@@ -411,313 +460,354 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   Widget _buildBookFrame() {
     return Column(
       children: [
-        // مساحة علوية للبار
-        SizedBox(height: MediaQuery.of(context).padding.top + 56),
-
-        // المصحف نفسه
+        // Expanded Mushaf area filling the screen
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Container(
-              decoration: BoxDecoration(
-                // ظل خارجي للكتاب
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                  BoxShadow(
-                    color: _richGold.withValues(alpha: 0.1),
-                    blurRadius: 30,
-                    spreadRadius: -5,
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Row(
-                  children: [
-                    // === العمود الأيمن: الكعب (Spine) ===
-                    _buildSpine(),
-
-                    // === منطقة الصفحات ===
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _darkGold.withValues(alpha: 0.6),
-                            width: 2,
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            // خلفية الصفحة (ورق عتيق)
-                            Container(
-                              decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: [
-                                    _parchmentDark,
-                                    _parchment,
-                                    _parchment,
-                                    _parchmentDark,
-                                  ],
-                                  stops: [0.0, 0.05, 0.95, 1.0],
-                                ),
+          child: Container(
+            decoration: BoxDecoration(
+              // ظل خفيف جداً للحفاظ على التفاصيل
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: _richGold.withValues(alpha: 0.1),
+                  blurRadius: 30,
+                  spreadRadius: -5,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _darkGold.withValues(alpha: 0.6),
+                        width: 2,
+                      ),
+                    ),
+                      child: Stack(
+                        children: [
+                          // خلفية الصفحة (ورق عتيق)
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  _parchmentDark,
+                                  _parchment,
+                                  _parchment,
+                                  _parchmentDark,
+                                ],
+                                stops: const [0.0, 0.05, 0.95, 1.0],
                               ),
                             ),
+                          ),
 
-                            // PageView
-                            Directionality(
-                              textDirection: TextDirection.rtl,
-                              child: AnimatedBuilder(
-                                animation: _pageController,
-                                builder: (context, child) {
-                                  return PageView.builder(
-                                    controller: _pageController,
-                                    itemCount: 604,
-                                    onPageChanged: (index) {
-                                      final page = index + 1;
-                                      
-                                      // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
-                                      HapticFeedback.lightImpact();
+                          // PageView for RTL flipping (Standard physical flow)
+                          Directionality(
+                            textDirection: TextDirection.rtl,
+                            child: AnimatedBuilder(
+                              animation: _pageController,
+                              builder: (context, child) {
+                                return PageView.builder(
+                                  controller: _pageController,
+                                  clipBehavior: Clip.none, // Essential for showing curl outside bounds
+                                  reverse: false, // Page 1 on right, Swipe R->L advances
+                                  itemCount: 604,
+                                  onPageChanged: (index) {
+                                    final page = index + 1;
+                                    
+                                    // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
+                                    HapticFeedback.lightImpact();
 
-                                      setState(() {
-                                        _currentPage = page;
-                                        _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
-                                        _currentJuz = QuranPageHelper.getJuzForPage(page);
-                                        if (_showAudioPlayer) {
-                                          _showAudioPlayer = false;
-                                        }
-                                      });
-                                      _recordPageVisit(page);
-                                      _pageTurnController.forward(from: 0);
-                                    },
-                                    itemBuilder: (context, index) {
-                                      final pageNumber = index + 1;
-                                      double scale = 1.0;
-                                      double angle = 0.0;
-                                      double opacity = 1.0;
-
-                                      if (_pageController.position.haveDimensions) {
-                                        final pageOffset = _pageController.page! - index;
-                                        
-                                        // When flipping backward (right to left in RTL)
-                                        if (pageOffset > 0) {
-                                          angle = (pageOffset * -3.14 / 2.5).clamp(-3.14/2.5, 0.0);
-                                          opacity = (1.0 - pageOffset).clamp(0.0, 1.0);
-                                        } 
-                                        // When flipping forward (left to right in RTL)
-                                        else if (pageOffset < 0) {
-                                          angle = (pageOffset * -3.14 / 2.5).clamp(0.0, 3.14/2.5);
-                                          opacity = (1.0 + pageOffset).clamp(0.0, 1.0);
-                                        }
-                                        
-                                        // Scale down slightly while flipping
-                                        scale = (1 - (pageOffset.abs() * 0.1)).clamp(0.9, 1.0);
+                                    setState(() {
+                                      _currentPage = page;
+                                      _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
+                                      _currentJuz = QuranPageHelper.getJuzForPage(page);
+                                      if (_showAudioPlayer) {
+                                        _showAudioPlayer = false;
                                       }
+                                    });
+                                    _recordPageVisit(page);
+                                  },
+                                  itemBuilder: (context, index) {
+                                    final pageNumber = index + 1;
+                                    double angle = 0.0;
 
-                                      return Transform(
-                                        alignment: angle < 0 ? Alignment.centerRight : Alignment.centerLeft,
-                                        transform: Matrix4.identity()
-                                          ..setEntry(3, 2, 0.001) // perspective
-                                          ..scaleByVector3(vmath.Vector3(scale, scale, 1.0))
-                                          ..rotateY(angle),
-                                        child: Opacity(
-                                          opacity: opacity,
+                                    if (_pageController.position.haveDimensions) {
+                                      final pageOffset = _pageController.page! - index;
+                                      
+                                                         // THE HYPER-REALISTIC "CYLINDRICAL CURL"
+                                      if (pageOffset > 0 && pageOffset < 1) {
+                                        // 1. Calculations for the curl geometry
+                                        // angle: how much the page has flipped (0 to PI)
+                                        angle = (pageOffset * math.pi).clamp(0.0, math.pi);
+                                        
+                                        // The curl progression (0 at start, 1 at middle, 0 at end)
+                                        final double curlFactor = math.sin(pageOffset * math.pi);
+                                        
+                                        // Protrusion towards the face (Z-axis)
+                                        final double zProtrusion = curlFactor * 140; 
+                                        
+                                        // 2. The Backface Logic
+                                        // When angle > PI/2, we are seeing the reverse side of the paper
+                                        final bool isBackFace = angle > (math.pi / 2);
+
+                                        return Transform(
+                                          alignment: Alignment.centerRight,
+                                          transform: Matrix4.identity()
+                                            ..setEntry(0, 3, pageOffset * MediaQuery.of(context).size.width) // Right Hinge Lock
+                                            ..setEntry(3, 2, 0.0012) // Perspective
+                                            ..setEntry(2, 3, zProtrusion) // Lift toward face
+                                            ..rotateY(angle)
+                                            // Dynamic Cylindrical Skew
+                                            ..setEntry(1, 0, pageOffset * 0.15 * (isBackFace ? 1 : -1))
+                                            ..rotateX(-pageOffset * 0.06),
                                           child: Stack(
                                             children: [
-                                              RepaintBoundary(
-                                                child: _buildPremiumPage(pageNumber),
-                                              ),
-                                              // Dynamic Shadow based on curl angle
-                                              if (angle != 0)
-                                                Positioned.fill(
+                                              // High-Contrast Contact Shadow on the static page
+                                              Positioned.fill(
+                                                child: Opacity(
+                                                  opacity: (curlFactor * 0.5).clamp(0.0, 0.5),
                                                   child: Container(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        begin: angle < 0 ? Alignment.centerRight : Alignment.centerLeft,
-                                                        end: angle < 0 ? Alignment.centerLeft : Alignment.centerRight,
-                                                        colors: [
-                                                          Colors.black.withValues(alpha: angle.abs() * 0.3),
-                                                          Colors.transparent,
-                                                        ],
-                                                      ),
+                                                    margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
+                                                    decoration: const BoxDecoration(
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.black,
+                                                          blurRadius: 40,
+                                                          offset: Offset(20, 0),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
                                                 ),
+                                              ),
+
+                                              // The actual page (Front/Back)
+                                              ClipPath(
+                                                clipper: _CylindricalPageClipper(progress: pageOffset),
+                                                child: Stack(
+                                                  children: [
+                                                    RepaintBoundary(
+                                                      child: isBackFace 
+                                                        ? Transform(
+                                                            alignment: Alignment.center,
+                                                            transform: Matrix4.rotationY(math.pi),
+                                                            child: Container(
+                                                              color: _parchmentDark, // Original Parchment Backhouse
+                                                              child: Opacity(
+                                                                opacity: 0.2,
+                                                                child: _buildPremiumPage(pageNumber + 1),
+                                                              ),
+                                                            ),
+                                                          )
+                                                        : _buildPremiumPage(pageNumber),
+                                                    ),
+
+                                                    // Sophisticated Cylindrical Shading
+                                                    Positioned.fill(
+                                                      child: Container(
+                                                        decoration: BoxDecoration(
+                                                          gradient: LinearGradient(
+                                                            begin: isBackFace ? Alignment.centerLeft : Alignment.centerRight,
+                                                            end: isBackFace ? Alignment.centerRight : Alignment.centerLeft,
+                                                            stops: const [0.0, 0.45, 0.55, 1.0],
+                                                            colors: [
+                                                              Colors.black.withValues(alpha: isBackFace ? 0.4 : 0.1),
+                                                              Colors.transparent,
+                                                              Colors.white.withValues(alpha: curlFactor * 0.35), // The Glint
+                                                              Colors.black.withValues(alpha: isBackFace ? 0.1 : 0.5),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
                                             ],
                                           ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
+                                        );
+                                      } 
+                                      else if (pageOffset < 0) {
+                                        // Next page underneath
+                                        return _buildPremiumPage(pageNumber);
+                                      }
+                                    }
+
+                                    return _buildPremiumPage(pageNumber);
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+
+                          // ظل الكعب على الصفحة
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 25,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.centerRight,
+                                  end: Alignment.centerLeft,
+                                  colors: [
+                                    _pageShadow,
+                                    Colors.transparent,
+                                  ],
+                                ),
                               ),
                             ),
+                          ),
 
-                            // ظل الكعب على الصفحة
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: 20,
+                          // إطار زخرفي داخلي
+                          Positioned.fill(
+                            child: IgnorePointer(
                               child: Container(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.centerRight,
-                                    end: Alignment.centerLeft,
-                                    colors: [
-                                      _pageShadow,
-                                      Colors.transparent,
-                                    ],
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: _richGold.withValues(alpha: 0.15),
+                                    width: 1,
                                   ),
                                 ),
                               ),
                             ),
-
-                            // إطار زخرفي داخلي
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: Container(
-                                  margin: const EdgeInsets.all(3),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: _richGold.withValues(alpha: 0.15),
-                                      width: 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-        ),
-
-        // مساحة سفلية للبار
-        const SizedBox(height: 60),
-      ],
-    );
+            ],
+          );
   }
 
-  // ============================================================
-  //  SPINE — الكعب
-  // ============================================================
-  Widget _buildSpine() {
-    return Container(
-      width: 18,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            _spineColor,
-            _deepGreen.withValues(alpha: 0.9),
-            _deepGreen,
-          ],
-        ),
-        border: Border(
-          right: BorderSide(
-            color: _darkGold.withValues(alpha: 0.5),
-            width: 1.5,
-          ),
-          left: BorderSide(
-            color: _darkGold.withValues(alpha: 0.7),
-            width: 2,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
-            blurRadius: 8,
-            offset: const Offset(-2, 0),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // زخرفة ذهبية على الكعب
-          _SpineOrnament(color: _richGold.withValues(alpha: 0.6)),
-          const SizedBox(height: 30),
-          // نص عمودي
-          RotatedBox(
-            quarterTurns: 1,
-            child: Text(
-              'القرآن الكريم',
-              style: GoogleFonts.amiri(
-                color: _richGold.withValues(alpha: 0.8),
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 30),
-          _SpineOrnament(color: _richGold.withValues(alpha: 0.6)),
-        ],
-      ),
-    );
-  }
 
   // ============================================================
   //  PREMIUM PAGE — الصفحة المزخرفة
   // ============================================================
   Widget _buildPremiumPage(int pageNumber) {
-    return InteractiveViewer(
-      minScale: 1.0,
-      maxScale: 3.5,
-      child: GestureDetector(
-        onLongPress: () => _showPageOptions(context, pageNumber),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // محتوى الصفحة
-            _buildPageImage(pageNumber),
+    return Container(
+      color: _parchment,
+      child: InteractiveViewer(
+        minScale: 1.0,
+        maxScale: 3.5,
+        child: GestureDetector(
+          onLongPress: () => _showPageOptions(context, pageNumber),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Page Content
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 30, 10, 30),
+                child: _buildPageImage(pageNumber),
+              ),
 
-            // Blur layer for memorization mode
-            if (_isMemorizationMode && !_isPeeking)
-              Positioned.fill(
-                child: Listener(
-                  onPointerDown: (_) => setState(() => _isPeeking = true),
-                  onPointerUp: (_) => setState(() => _isPeeking = false),
-                  onPointerCancel: (_) => setState(() => _isPeeking = false),
-                  // Use behavior to ensure it catches taps on the transparent container
-                  behavior: HitTestBehavior.opaque,
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                    child: Container(
-                      color: Colors.white.withValues(alpha: 0.05),
+              // Blur layer for memorization mode
+              if (_isMemorizationMode && !_isPeeking)
+                Positioned.fill(
+                  child: Listener(
+                    onPointerDown: (_) => setState(() => _isPeeking = true),
+                    onPointerUp: (_) => setState(() => _isPeeking = false),
+                    onPointerCancel: (_) => setState(() => _isPeeking = false),
+                    behavior: HitTestBehavior.opaque,
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                      child: Container(
+                        color: Colors.white.withValues(alpha: 0.05),
+                      ),
                     ),
+                  ),
+                ),
+
+              // Ornamental Frame
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _OrnamentalFramePainter(
+                    color: _richGold.withValues(alpha: 0.35),
                   ),
                 ),
               ),
 
-            // إطار زخرفي عتيق حول المحتوي
-            IgnorePointer(
-              child: CustomPaint(
-                painter: _OrnamentalFramePainter(
-                  color: _richGold.withValues(alpha: 0.25),
+              // Dynamic Header & Footer
+              _buildPageHeader(pageNumber),
+              _buildPageFooter(pageNumber),
+
+              // Highlight layer
+              if (_currentPage == pageNumber &&
+                  _activeAyah != null &&
+                  _activeAyahCoordinates.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 30, 10, 30),
+                  child: AyahHighlighter(
+                    coordinates: _activeAyahCoordinates,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageHeader(int pageNumber) {
+    final surahName = QuranPageHelper.getSurahNameForPage(pageNumber);
+    final juzNumber = QuranPageHelper.getJuzForPage(pageNumber);
+
+    return Positioned(
+      top: 6,
+      left: 15,
+      right: 15,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Juz Number (Left)
+          _HeaderElement(text: 'الجزء $juzNumber'),
+          
+          // Surah Name (Right)
+          _HeaderElement(text: surahName),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPageFooter(int pageNumber) {
+    return Positioned(
+      bottom: 2,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          width: 45,
+          height: 45,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: _richGold.withValues(alpha: 0.15), width: 0.5),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                painter: _FooterOrnamentPainter(color: _richGold.withValues(alpha: 0.4)),
+                size: const Size(45, 45),
+              ),
+              Text(
+                '$pageNumber',
+                style: GoogleFonts.outfit(
+                  color: _darkGold,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-
-            // Highlight layer
-            if (_currentPage == pageNumber &&
-                _activeAyah != null &&
-                _activeAyahCoordinates.isNotEmpty)
-              AyahHighlighter(
-                coordinates: _activeAyahCoordinates,
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -749,7 +839,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // ============================================================
   //  PREMIUM TOP BAR
   // ============================================================
-  Widget _buildPremiumTopBar() {
+  Widget _buildPremiumTopBar({bool isKids = false, KidsModeService? kidsMode}) {
+    final primaryColor = isKids ? kidsMode?.primaryColor ?? _richGold : _richGold;
+    
     return Positioned(
       top: 0,
       left: 0,
@@ -817,12 +909,12 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   Text(
                     _currentSurahName,
                     style: GoogleFonts.amiri(
-                      color: _richGold,
+                      color: primaryColor,
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       shadows: [
                         Shadow(
-                          color: _richGold.withValues(alpha: 0.3),
+                          color: primaryColor.withValues(alpha: 0.3),
                           blurRadius: 10,
                         ),
                       ],
@@ -857,7 +949,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // ============================================================
   //  PREMIUM BOTTOM BAR
   // ============================================================
-  Widget _buildPremiumBottomBar() {
+  Widget _buildPremiumBottomBar({bool isKids = false, KidsModeService? kidsMode}) {
+    final primaryColor = isKids ? kidsMode?.primaryColor ?? _richGold : _richGold;
+
     return Positioned(
       bottom: 0,
       left: 0,
@@ -914,7 +1008,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                 child: Text(
                   'صفحة $_currentPage',
                   style: GoogleFonts.amiri(
-                    color: _richGold,
+                    color: primaryColor,
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
@@ -953,11 +1047,29 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(
+                        content: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          _richGold.withValues(alpha: 0.2),
+                          _richGold.withValues(alpha: 0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: _richGold.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
                           'تم حفظ الصفحة $_currentPage ✓',
                           style: GoogleFonts.amiri(color: Colors.white),
                         ),
-                        backgroundColor: _deepGreen,
+                        ),
+                        backgroundColor: Colors.transparent, // Make SnackBar background transparent
+                        elevation: 0, // Remove shadow
                         behavior: SnackBarBehavior.floating,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -983,7 +1095,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   Widget _buildPremiumPlaceholder(int pageNumber) {
     return Container(
       decoration: BoxDecoration(
-        color: _spineColor,
+        color: AppColors.cardBackground,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -991,7 +1103,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
             offset: const Offset(0, 4),
           ),
         ],
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [_parchment, _parchmentDark, _parchment],
@@ -1281,46 +1393,150 @@ class _OrnamentalFramePainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8;
+      ..strokeWidth = 1.0;
 
-    // إطار خارجي
+    // Main Outer Border
     final outerRect = Rect.fromLTWH(8, 8, size.width - 16, size.height - 16);
-    canvas.drawRect(outerRect, paint);
+    canvas.drawRRect(RRect.fromRectAndRadius(outerRect, const Radius.circular(2)), paint);
 
-    // إطار داخلي
-    final innerRect = Rect.fromLTWH(14, 14, size.width - 28, size.height - 28);
-    canvas.drawRect(innerRect, paint..strokeWidth = 0.4);
+    // Thick frame area
+    final thickFramePaint = Paint()
+      ..color = color.withValues(alpha: 0.1)
+      ..style = PaintingStyle.fill;
+    
+    final innerRect = Rect.fromLTWH(18, 18, size.width - 36, size.height - 36);
+    
+    // Draw the "frame" body
+    canvas.drawPath(
+      Path.combine(
+        PathOperation.difference,
+        Path()..addRect(outerRect),
+        Path()..addRect(innerRect),
+      ),
+      thickFramePaint,
+    );
 
-    // زخرفة الزوايا
-    const cornerSize = 20.0;
-    final cornerPaint = Paint()
+    // Inner Border
+    canvas.drawRect(innerRect, paint..strokeWidth = 0.5);
+
+    // Ornaments in corners
+    _drawCorners(canvas, size, color);
+    _drawSideOrnaments(canvas, size, color);
+  }
+
+  void _drawCorners(Canvas canvas, Size size, Color color) {
+    final p = Paint()
       ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
 
-    // أعلى يسار
-    canvas.drawLine(const Offset(8, 8), const Offset(8 + cornerSize, 8), cornerPaint);
-    canvas.drawLine(const Offset(8, 8), const Offset(8, 8 + cornerSize), cornerPaint);
-    // أعلى يمين
-    canvas.drawLine(Offset(size.width - 8, 8),
-        Offset(size.width - 8 - cornerSize, 8), cornerPaint);
-    canvas.drawLine(Offset(size.width - 8, 8),
-        Offset(size.width - 8, 8 + cornerSize), cornerPaint);
-    // أسفل يسار
-    canvas.drawLine(Offset(8, size.height - 8),
-        Offset(8 + cornerSize, size.height - 8), cornerPaint);
-    canvas.drawLine(Offset(8, size.height - 8),
-        Offset(8, size.height - 8 - cornerSize), cornerPaint);
-    // أسفل يمين
-    canvas.drawLine(Offset(size.width - 8, size.height - 8),
-        Offset(size.width - 8 - cornerSize, size.height - 8), cornerPaint);
-    canvas.drawLine(Offset(size.width - 8, size.height - 8),
-        Offset(size.width - 8, size.height - 8 - cornerSize), cornerPaint);
+    const s = 25.0; // Corner size
+    const margin = 8.0;
+
+    // TL
+    canvas.drawLine(const Offset(margin, margin), const Offset(margin + s, margin), p);
+    canvas.drawLine(const Offset(margin, margin), const Offset(margin, margin + s), p);
+    // TR
+    canvas.drawLine(Offset(size.width - margin, margin), Offset(size.width - margin - s, margin), p);
+    canvas.drawLine(Offset(size.width - margin, margin), Offset(size.width - margin, margin + s), p);
+    // BL
+    canvas.drawLine(Offset(margin, size.height - margin), Offset(margin + s, size.height - margin), p);
+    canvas.drawLine(Offset(margin, size.height - margin), Offset(margin, size.height - margin - s), p);
+    // BR
+    canvas.drawLine(Offset(size.width - margin, size.height - margin), Offset(size.width - margin - s, size.height - margin), p);
+    canvas.drawLine(Offset(size.width - margin, size.height - margin), Offset(size.width - margin, size.height - margin - s), p);
+  }
+
+  void _drawSideOrnaments(Canvas canvas, Size size, Color color) {
+    final p = Paint()..color = color.withValues(alpha: 0.3)..strokeWidth = 0.5;
+    // Tiny dots/diamonds along the frame
+    for (double i = 40; i < size.height - 40; i += 60) {
+      canvas.drawCircle(Offset(13, i), 1, p);
+      canvas.drawCircle(Offset(size.width - 13, i), 1, p);
+    }
   }
 
   @override
   bool shouldRepaint(covariant _OrnamentalFramePainter oldDelegate) =>
       oldDelegate.color != color;
+}
+
+class _HeaderElement extends StatelessWidget {
+  final String text;
+  const _HeaderElement({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          text,
+          style: GoogleFonts.amiri(
+            color: const Color(0xFFB8860B),
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Container(
+          width: 40,
+          height: 0.8,
+          margin: const EdgeInsets.only(top: 2),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.transparent,
+                const Color(0xFFD4A947).withValues(alpha: 0.5),
+                Colors.transparent,
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FooterOrnamentPainter extends CustomPainter {
+  final Color color;
+  _FooterOrnamentPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2;
+
+    // Draw 8 stylized arcs for a floral look
+    for (int i = 0; i < 8; i++) {
+      final angle = i * 45 * 3.14 / 180;
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(angle);
+      
+      // Draw a small decorative arc/leaf
+      canvas.drawArc(
+        Rect.fromCircle(center: Offset(r - 10, 0), radius: 6),
+        -1.5,
+        3.0,
+        false,
+        paint,
+      );
+      
+      canvas.restore();
+    }
+    
+    // Inner circles
+    canvas.drawCircle(center, r - 5, paint..strokeWidth = 0.4);
+    canvas.drawCircle(center, r - 8, paint..strokeWidth = 0.2);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 /// خط زخرفي أفقي
@@ -1402,28 +1618,37 @@ class _MiniOrnament extends StatelessWidget {
   }
 }
 
-/// زخرفة الكعب
-class _SpineOrnament extends StatelessWidget {
-  final Color color;
-  const _SpineOrnament({required this.color});
+
+/// Clipper for the Cylindrical Page Curl effect
+class _CylindricalPageClipper extends CustomClipper<Path> {
+  final double progress;
+  _CylindricalPageClipper({required this.progress});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(width: 10, height: 1, color: color),
-        const SizedBox(height: 3),
-        Container(
-          width: 4,
-          height: 4,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Container(width: 10, height: 1, color: color),
-      ],
-    );
+  Path getClip(Size size) {
+    final path = Path();
+    final double w = size.width;
+    final double h = size.height;
+    
+    // Aggressive curl for "WOW" factor
+    final double curlFactor = math.sin(progress * math.pi);
+    final double curveWidth = curlFactor * 100.0;
+    final double curveHeight = curlFactor * 50.0;
+
+    path.moveTo(0, 0);
+    // Top Edge with non-linear curve
+    path.quadraticBezierTo(w * 0.4, -curveHeight * 1.5, w, 0);
+    // Curved Right Edge (the "Pull" edge)
+    path.cubicTo(w + curveWidth, h * 0.2, w + curveWidth, h * 0.8, w, h);
+    // Bottom Edge with non-linear curve
+    path.quadraticBezierTo(w * 0.4, h + curveHeight * 1.5, 0, h);
+    path.lineTo(0, 0);
+    path.close();
+    
+    return path;
   }
+
+  @override
+  bool shouldReclip(_CylindricalPageClipper oldClipper) => oldClipper.progress != progress;
 }
+

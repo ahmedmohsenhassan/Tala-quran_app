@@ -1,5 +1,6 @@
 // Removed unused math import if needed, but I will keep it and fix the usage
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/surahs.dart';
@@ -36,7 +37,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final streak = await StreakService.getStreakData();
     if (mounted) {
       setState(() {
-        _lastRead = lastRead;
+        _lastRead = lastRead ?? {
+          'surahNumber': 1,
+          'surahName': 'الفاتحة',
+          'pageNumber': 1,
+          'isDefault': true,
+        };
         _streakData = streak;
       });
       // عرض رسالة ترحيبية ذكية — Show smart welcome message
@@ -77,8 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         _buildWelcomeHeader(),
                         const SizedBox(height: 24),
                         if (_streakData != null) _buildStreakCard(),
-                        const SizedBox(height: 24),
                         if (_lastRead != null) ...[
+                          const SizedBox(height: 24),
                           _buildQuickAccessSection(),
                           const SizedBox(height: 32),
                         ],
@@ -153,30 +159,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Container(
       width: double.infinity,
-      height: 190,
+      height: 200,
       decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.emerald.withValues(alpha: 0.15)),
+        borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
+          ),
+          BoxShadow(
+            color: AppColors.gold.withValues(alpha: 0.1),
+            blurRadius: 10,
+            spreadRadius: -5,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(32),
         child: Stack(
           children: [
-            // خلفية متدرجة
+            // Premium Gradient Background
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.emerald.withValues(alpha: 0.85),
-                    AppColors.background.withValues(alpha: 0.95),
+                    AppColors.cardBackground,
+                    AppColors.background.withValues(alpha: 0.8),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -184,80 +193,107 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             
-            // نمط أرابيسك زخرفي — Arabesque Pattern Overlay
+            // Glassmorphism Overlay
             Positioned.fill(
-              child: Opacity(
-                opacity: 0.08,
-                child: CustomPaint(
-                  painter: _ArabesquePatternPainter(color: Colors.white),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(
+                  color: Colors.white.withValues(alpha: 0.02),
                 ),
               ),
             ),
 
+            // Decorative Arabesque Pattern
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.1,
+                child: CustomPaint(
+                  painter: _ArabesquePatternPainter(color: AppColors.gold),
+                ),
+              ),
+            ),
+
+            // Subtle Mosque silhouette
             Positioned(
-              left: -30,
-              bottom: -30,
-              child: Icon(Icons.mosque,
-                  color: Colors.white.withValues(alpha: 0.06), size: 140),
+              left: -40,
+              bottom: -40,
+              child: Icon(Icons.mosque_rounded,
+                  color: Colors.white.withValues(alpha: 0.05), size: 180),
             ),
             
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.auto_awesome_rounded,
-                        color: AppColors.gold.withValues(alpha: 0.9), size: 22),
-                    const SizedBox(width: 8),
-                    Text(
-                      'السلام عليكم',
-                      style: GoogleFonts.amiri(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 20,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isKids ? 'هيا يا بطل، لنقرأ القرآن!' : 'نور حياتك بالقرآن',
-                  style: GoogleFonts.amiri(
-                    color: Colors.white,
-                    fontSize: isKids ? 32 : 28,
-                    fontWeight: FontWeight.bold,
-                    shadows: [
-                      Shadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
-                    ]
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: AppColors.gold.withValues(alpha: 0.25)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined,
-                          color: AppColors.gold, size: 16),
-                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded,
+                            color: AppColors.gold, size: 18),
+                      ),
+                      const SizedBox(width: 12),
                       Text(
-                        _getDayGreetingAr(),
+                        'السلام عليكم ورحمة الله',
                         style: GoogleFonts.amiri(
-                            color: AppColors.gold,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold),
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ).paddingAll(24),
+                  const SizedBox(height: 12),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Colors.white, Color(0xFFE8C76A)],
+                    ).createShader(bounds),
+                    child: Text(
+                      isKids ? 'هيا يا بطل، لنقرأ القرآن! 🌟' : 'نور حياتك بالقرآن الكريم',
+                      style: GoogleFonts.amiri(
+                        color: Colors.white,
+                        fontSize: isKids ? 34 : 30,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Animated-like card for day
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.stars_rounded,
+                            color: AppColors.gold, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          _getDayGreetingAr(),
+                          style: GoogleFonts.amiri(
+                            color: AppColors.gold,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -385,7 +421,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'مواصلة القراءة',
+                            _lastRead!['isDefault'] == true
+                                ? 'ابدأ القراءة'
+                                : 'مواصلة القراءة',
                             style: GoogleFonts.outfit(
                               color: AppColors.gold,
                               fontSize: 12,
@@ -395,9 +433,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _lastRead!['surahName'] == 'المصحف'
-                                ? 'آخر صفحة مفتوحة'
-                                : _lastRead!['surahName'],
+                            _lastRead!['isDefault'] == true
+                                ? 'ابدأ رحلتك مع القرآن'
+                                : (_lastRead!['surahName'] == 'المصحف'
+                                    ? 'آخر صفحة مفتوحة'
+                                    : _lastRead!['surahName']),
                             style: GoogleFonts.amiri(
                               color: AppColors.textPrimary,
                               fontSize: 24,
@@ -790,6 +830,3 @@ class _ArabesquePatternPainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-extension on Widget {
-  Widget paddingAll(double val) => Padding(padding: EdgeInsets.all(val), child: this);
-}

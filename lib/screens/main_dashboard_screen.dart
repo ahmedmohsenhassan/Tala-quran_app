@@ -61,9 +61,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                 });
               },
               itemBuilder: (context, index) {
-                double value = 1.0;
-                if (_pageController.position.haveDimensions) {
-                  value = _pageController.page! - index;
+                double value;
+                if (_pageController.position.hasContentDimensions) {
+                  value = (_pageController.page ?? _currentIndex.toDouble()) - index;
+                } else {
+                  value = (_currentIndex.toDouble()) - index;
                 }
                 
                 // حساب زاوية الدوران ثلاثي الأبعاد للتبويبات

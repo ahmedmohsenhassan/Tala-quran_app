@@ -8,6 +8,7 @@ class ThemeService {
   static const String _colorKey = 'app_theme_color';
   static const String _fontKey = 'app_theme_font';
   static const String _fontSizeKey = 'app_theme_font_size';
+  static const String _mushafThemeKey = 'app_mushaf_theme';
 
   /// القيم المتاحة للمظهر (Mode): 'dark', 'light', 'system'
   static const String dark = 'dark';
@@ -26,6 +27,11 @@ class ThemeService {
   static const String fontUthmanic = 'Uthmanic';
   static const String fontNaskh = 'Naskh';
   static const String fontIndopak = 'IndoPak';
+
+  /// ثيمات المصحف (Mushaf Themes)
+  static const String mushafClassic = 'classic'; // Green (default)
+  static const String mushafPremium = 'premium'; // Gold ornate
+  static const String mushafDark = 'dark_green'; // Dimmed comfort
 
   /// استرجاع المظهر المحفوظ
   static Future<String> getThemeMode() async {
@@ -73,5 +79,17 @@ class ThemeService {
   static Future<void> setFontSizeMultiplier(double multiplier) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_fontSizeKey, multiplier);
+  }
+
+  /// استرجاع ثيم المصحف المختار
+  static Future<String> getMushafTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_mushafThemeKey) ?? mushafClassic;
+  }
+
+  /// حفظ ثيم المصحف المختار
+  static Future<void> setMushafTheme(String theme) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mushafThemeKey, theme);
   }
 }

@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.tala_quran_app"
+    namespace = "com.ahmedmohsen.talaquran"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "29.0.13113456"
 
@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.tala_quran_app"
+        applicationId = "com.ahmedmohsen.talaquran"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

@@ -244,7 +244,7 @@ class SettingsTab extends StatelessWidget {
             value: value,
             onChanged: onChanged,
             activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
-            activeColor: AppColors.gold,
+            activeThumbColor: AppColors.gold,
           ),
         ],
       ),

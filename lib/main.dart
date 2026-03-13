@@ -10,6 +10,7 @@ import 'services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 import 'services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'widgets/error_boundary.dart';
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -30,16 +31,17 @@ void main() async {
   fontSizeNotifier.value = savedFontSize;
   AppColors.applyColorTheme(savedColor);
 
-  // Initialize push notifications and verse database
-  await NotificationService.initialize();
-
-  // Try refreshing verse database from internet (non-blocking)
-  NotificationService.refreshVerseDb();
+  // Initialize push notifications and verse database (non-blocking for faster startup)
+  NotificationService.initialize().then((_) {
+    NotificationService.refreshVerseDb();
+  });
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => KidsModeService(),
-      child: const TalaQuranApp(),
+    ErrorBoundary(
+      child: ChangeNotifierProvider(
+        create: (_) => KidsModeService(),
+        child: const TalaQuranApp(),
+      ),
     ),
   );
 }
@@ -93,7 +95,7 @@ class TalaQuranApp extends StatelessWidget {
                     ),
                     textTheme: GoogleFonts.amiriTextTheme().copyWith(
                       bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.lightTextPrimary),
-                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withOpacity(0.8) : AppColors.lightTextSecondary),
+                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withValues(alpha: 0.8) : AppColors.lightTextSecondary),
                     ),
                     pageTransitionsTheme: const PageTransitionsTheme(
                       builders: {
@@ -114,7 +116,7 @@ class TalaQuranApp extends StatelessWidget {
                     ),
                     textTheme: GoogleFonts.amiriTextTheme(ThemeData.dark().textTheme).copyWith(
                       bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.textPrimary),
-                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withOpacity(0.8) : AppColors.textSecondary),
+                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withValues(alpha: 0.8) : AppColors.textSecondary),
                     ),
                     pageTransitionsTheme: const PageTransitionsTheme(
                       builders: {
