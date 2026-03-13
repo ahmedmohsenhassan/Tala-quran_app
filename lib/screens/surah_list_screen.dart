@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../utils/quran_page_helper.dart';
+import 'mushaf_viewer_screen.dart';
 
 class SurahListScreen extends StatelessWidget {
   final List<String> surahNames = const [
@@ -163,7 +165,15 @@ class SurahListScreen extends StatelessWidget {
                   ),
                 ),
                 onTap: () {
-                  // سيتم الربط لاحقًا بشاشة التلاوة
+                  final page = QuranPageHelper.getPageForSurah(index + 1);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MushafViewerScreen(
+                        initialPage: page,
+                      ),
+                    ),
+                  );
                 },
               ),
             );

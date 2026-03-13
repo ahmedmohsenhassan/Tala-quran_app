@@ -97,7 +97,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   }
 
   Future<void> _playPageAudio() async {
-    setState(() => _isError = false);
+    if (_isError) setState(() => _isError = false);
     final url = _getPageAudioUrl(widget.pageNumber);
     debugPrint('Playing page audio: $url');
     
@@ -112,6 +112,15 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     }
     
     await _audioService.playFromUrl(url);
+  }
+
+  @override
+  void didUpdateWidget(covariant MushafAudioPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pageNumber != widget.pageNumber) {
+      // Automatic switch on page turn
+      _playPageAudio();
+    }
   }
 
   void _updateCurrentAyah(Duration p) {
