@@ -1,3 +1,5 @@
+// Removed unused math import if needed, but I will keep it and fix the usage
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../data/surahs.dart';
@@ -9,7 +11,8 @@ import '../services/streak_service.dart';
 import '../services/notification_service.dart';
 import 'mushaf_viewer_screen.dart';
 import 'surah_detail_screen.dart';
-import 'notification_settings_screen.dart';
+import '../services/kids_mode_service.dart';
+import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,59 +57,67 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            _buildSliverAppBar(),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 24),
-                    _buildWelcomeHeader(),
-                    const SizedBox(height: 24),
-                    if (_streakData != null) _buildStreakCard(),
-                    const SizedBox(height: 24),
-                    if (_lastRead != null) ...[
-                      _buildQuickAccessSection(),
-                      const SizedBox(height: 32),
-                    ],
-                    Text(
-                      'الفهرس الشامل',
-                      style: GoogleFonts.amiri(
-                        color: AppColors.gold,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+        body: Stack(
+          children: [
+            // خلفية متحركة بريميوم — Premium Animated Background
+            const _AnimatedBackground(),
+
+            // المحتوى الرئيسي خلفية شفافة
+            CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                _buildSliverAppBar(),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        _buildWelcomeHeader(),
+                        const SizedBox(height: 24),
+                        if (_streakData != null) _buildStreakCard(),
+                        const SizedBox(height: 24),
+                        if (_lastRead != null) ...[
+                          _buildQuickAccessSection(),
+                          const SizedBox(height: 32),
+                        ],
+                        Text(
+                          'الفهرس الشامل',
+                          style: GoogleFonts.amiri(
+                            color: AppColors.gold,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final surah = surahs[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SurahCard(
-                        number: surah['number'],
-                        name: surah['name'],
-                        englishName: surah['english_name'],
-                        onTap: () => _showReadModeDialog(context, surah),
-                      ),
-                    );
-                  },
-                  childCount: surahs.length,
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final surah = surahs[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: SurahCard(
+                            number: surah['number'],
+                            name: surah['name'],
+                            englishName: surah['english_name'],
+                            onTap: () => _showReadModeDialog(context, surah),
+                          ),
+                        );
+                      },
+                      childCount: surahs.length,
+                    ),
+                  ),
                 ),
-              ),
+                const SliverToBoxAdapter(child: SizedBox(height: 120)),
+              ],
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
           ],
         ),
       ),
@@ -114,114 +125,157 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSliverAppBar() {
+    final kidsMode = Provider.of<KidsModeService>(context);
+    final isKids = kidsMode.isKidsModeActive;
+
     return SliverAppBar(
       expandedHeight: 0,
       floating: true,
       pinned: true,
       elevation: 0,
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       centerTitle: true,
       title: Text(
-        'تلا قرآن',
+        isKids ? 'تلاوتي الجميلة 🌟' : 'تلا قرآن',
         style: GoogleFonts.amiri(
-          color: AppColors.gold,
-          fontSize: 28,
+          color: isKids ? Colors.orange : AppColors.gold,
+          fontSize: isKids ? 32 : 28,
           fontWeight: FontWeight.bold,
         ),
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined, color: AppColors.gold),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const NotificationSettingsScreen()),
-            );
-          },
-        ),
-      ],
+      actions: const [],
     );
   }
 
   Widget _buildWelcomeHeader() {
+    final kidsMode = Provider.of<KidsModeService>(context);
+    final isKids = kidsMode.isKidsModeActive;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      height: 190,
       decoration: BoxDecoration(
-        color: AppColors.emerald,
+        color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.emerald.withValues(alpha: 0.15)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: -20,
-            bottom: -20,
-            child: Icon(Icons.mosque,
-                color: Colors.white.withValues(alpha: 0.05), size: 120),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome_rounded,
-                      color: AppColors.gold.withValues(alpha: 0.8), size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'السلام عليكم',
-                    style: GoogleFonts.amiri(
-                      color: Colors.white.withValues(alpha: 0.8),
-                      fontSize: 18,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'نور حياتك بالقرآن',
-                style: GoogleFonts.amiri(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Stack(
+          children: [
+            // خلفية متدرجة
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.emerald.withValues(alpha: 0.85),
+                    AppColors.background.withValues(alpha: 0.95),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-              const SizedBox(height: 20),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border:
-                      Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+            ),
+            
+            // نمط أرابيسك زخرفي — Arabesque Pattern Overlay
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.08,
+                child: CustomPaint(
+                  painter: _ArabesquePatternPainter(color: Colors.white),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              ),
+            ),
+
+            Positioned(
+              left: -30,
+              bottom: -30,
+              child: Icon(Icons.mosque,
+                  color: Colors.white.withValues(alpha: 0.06), size: 140),
+            ),
+            
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        color: AppColors.gold, size: 14),
+                    Icon(Icons.auto_awesome_rounded,
+                        color: AppColors.gold.withValues(alpha: 0.9), size: 22),
                     const SizedBox(width: 8),
                     Text(
-                      'جمعة مباركة',
+                      'السلام عليكم',
                       style: GoogleFonts.amiri(
-                          color: AppColors.gold, fontSize: 13),
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 20,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(height: 8),
+                Text(
+                  isKids ? 'هيا يا بطل، لنقرأ القرآن!' : 'نور حياتك بالقرآن',
+                  style: GoogleFonts.amiri(
+                    color: Colors.white,
+                    fontSize: isKids ? 32 : 28,
+                    fontWeight: FontWeight.bold,
+                    shadows: [
+                      Shadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4),
+                    ]
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border:
+                        Border.all(color: AppColors.gold.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          color: AppColors.gold, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        _getDayGreetingAr(),
+                        style: GoogleFonts.amiri(
+                            color: AppColors.gold,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ).paddingAll(24),
+          ],
+        ),
       ),
     );
+  }
+
+  String _getDayGreetingAr() {
+    final day = DateTime.now().weekday;
+    switch (day) {
+      case DateTime.friday: return 'جمعة مباركة';
+      case DateTime.saturday: return 'سبت مبارك';
+      case DateTime.sunday: return 'أحد مبارك';
+      case DateTime.monday: return 'اثنين مبارك';
+      case DateTime.tuesday: return 'ثلاثاء مباركة';
+      case DateTime.wednesday: return 'أربعاء مباركة';
+      case DateTime.thursday: return 'خميس مبارك';
+      default: return 'يوم مبارك';
+    }
   }
 
   Widget _buildQuickAccessSection() {
@@ -246,74 +300,127 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 16),
         InkWell(
           onTap: () {
-            final page = _lastRead!['pageNumber'] ??
-                QuranPageHelper.getPageForSurah(_lastRead!['surahNumber']);
+            final int? page = _lastRead!['pageNumber'];
+            final int surahNum = _lastRead!['surahNumber'] ?? 1;
+            final targetPage = page ?? QuranPageHelper.getPageForSurah(surahNum);
+            
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => MushafViewerScreen(initialPage: page),
+                builder: (_) => MushafViewerScreen(initialPage: targetPage),
               ),
             ).then((_) => _loadData());
           },
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(24),
-              border:
-                  Border.all(color: AppColors.emerald.withValues(alpha: 0.1)),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.cardBackground,
+                  AppColors.cardBackground.withValues(alpha: 0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: AppColors.gold.withValues(alpha: 0.4),
+                width: 1.5,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
+                  color: AppColors.gold.withValues(alpha: 0.1),
+                  blurRadius: 20,
+                  spreadRadius: -5,
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: Row(
+            child: Stack(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: AppColors.emerald.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.menu_book_rounded,
-                        color: AppColors.emerald, size: 28),
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _lastRead!['surahName'] == 'المصحف'
-                            ? 'آخر صفحة مفتوحة'
-                            : _lastRead!['surahName'],
-                        style: GoogleFonts.amiri(
-                          color: AppColors.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _lastRead!['pageNumber'] != null
-                            ? 'صفحة ${_lastRead!['pageNumber']}'
-                            : 'سورة ${_lastRead!['surahName']}',
-                        style: GoogleFonts.outfit(
-                          color: AppColors.textMuted,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+                // زخرفة خلفية صغيرة — Small decorative corner ornament
+                Positioned(
+                  top: -10,
+                  right: -10,
+                  child: Opacity(
+                    opacity: 0.1,
+                    child: Transform.rotate(
+                      angle: math.pi / 4,
+                      child: const Icon(Icons.star_border_rounded, color: AppColors.gold, size: 60),
+                    ),
                   ),
                 ),
-                const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: AppColors.gold, size: 14),
+                Row(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.gold, AppColors.gold.withValues(alpha: 0.6)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.gold.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.bookmark_rounded,
+                            color: Colors.black87, size: 30),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'مواصلة القراءة',
+                            style: GoogleFonts.outfit(
+                              color: AppColors.gold,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _lastRead!['surahName'] == 'المصحف'
+                                ? 'آخر صفحة مفتوحة'
+                                : _lastRead!['surahName'],
+                            style: GoogleFonts.amiri(
+                              color: AppColors.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _lastRead!['pageNumber'] != null
+                                ? 'صفحة ${_lastRead!['pageNumber']}'
+                                : 'سورة ${_lastRead!['surahName']}',
+                            style: GoogleFonts.amiri(
+                              color: AppColors.gold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded,
+                        color: AppColors.gold, size: 18),
+                  ],
+                ),
               ],
             ),
           ),
@@ -328,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final bool hasReadToday = streak['hasReadToday'] ?? false;
     final String emoji = streak['streakEmoji'] ?? '✨';
     final nextMilestone = streak['nextMilestone'] as Map<String, dynamic>;
-    final List<bool> weekDays = streak['weekDays'] as List<bool>;
+    final List<bool> weekDays = (streak['weekDays'] as List).cast<bool>();
     final dayNames = ['إث', 'ثل', 'أر', 'خم', 'جم', 'سب', 'أح'];
 
     return Container(
@@ -351,7 +458,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       child: Column(
         children: [
-          // الصف العلوي — Header row
           Row(
             children: [
               Text(emoji, style: const TextStyle(fontSize: 32)),
@@ -385,8 +491,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 20),
-
-          // حالة أيام الأسبوع — Week progress
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: List.generate(7, (i) {
@@ -427,8 +531,6 @@ class _HomeScreenState extends State<HomeScreen> {
             }),
           ),
           const SizedBox(height: 16),
-
-          // الإنجاز القادم — Next milestone
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -465,9 +567,9 @@ class _HomeScreenState extends State<HomeScreen> {
         textDirection: TextDirection.rtl,
         child: Container(
           padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.cardBackground,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -584,4 +686,110 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+// ============================================================
+//  PREMIUM DECORATIVE PAINTERS & WIDGETS
+// ============================================================
+
+class _AnimatedBackground extends StatefulWidget {
+  const _AnimatedBackground();
+
+  @override
+  State<_AnimatedBackground> createState() => _AnimatedBackgroundState();
+}
+
+class _AnimatedBackgroundState extends State<_AnimatedBackground>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 15),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(
+                0.5 * (1 + 0.3 * (0.5 - _controller.value).abs()),
+                -0.5 + 0.2 * _controller.value,
+              ),
+              radius: 1.5,
+              colors: [
+                AppColors.emerald.withValues(alpha: 0.08),
+                AppColors.background,
+              ],
+            ),
+          ),
+          child: Opacity(
+            opacity: 0.03,
+            child: CustomPaint(
+              size: MediaQuery.of(context).size,
+              painter: _ArabesquePatternPainter(color: AppColors.gold),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ArabesquePatternPainter extends CustomPainter {
+  final Color color;
+  _ArabesquePatternPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    const spacing = 60.0;
+    for (double x = 0; x < size.width + spacing; x += spacing) {
+      for (double y = 0; y < size.height + spacing; y += spacing) {
+        _drawIslamicStar(canvas, Offset(x, y), 25, paint);
+      }
+    }
+  }
+
+  void _drawIslamicStar(Canvas canvas, Offset center, double radius, Paint paint) {
+    final Path path = Path();
+    for (int i = 0; i < 9; i++) {
+      double angle = (i * 45) * math.pi / 180;
+      double r = i % 2 == 0 ? radius : radius * 0.5;
+      double x = center.dx + r * math.cos(angle);
+      double y = center.dy + r * math.sin(angle);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(center, radius * 0.2, paint);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+extension on Widget {
+  Widget paddingAll(double val) => Padding(padding: EdgeInsets.all(val), child: this);
 }

@@ -13,12 +13,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 class MushafAudioPlayer extends StatefulWidget {
   final int pageNumber;
   final Function(int surah, int ayah) onAyahChanged;
+  final ValueChanged<bool>? onMemorizationModeChanged;
   final VoidCallback onClose;
 
   const MushafAudioPlayer({
     super.key,
     required this.pageNumber,
     required this.onAyahChanged,
+    this.onMemorizationModeChanged,
     required this.onClose,
   });
 
@@ -36,6 +38,10 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   List<Map<String, dynamic>> _verseTimings = [];
   int _currentAyah = -1;
   int _currentSurah = -1;
+
+  bool _isMemorizationMode = false;
+  int? _loopStartAyah;
+  int? _loopEndAyah;
 
   @override
   void initState() {
@@ -136,6 +142,137 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
         break;
       }
     }
+
+    // A-B Loop Logic Check (independently check if we crossed the end boundary)
+    if (_loopStartAyah != null && _loopEndAyah != null) {
+      try {
+        final endTiming = _verseTimings.firstWhere((t) => t['ayahNumber'] == _loopEndAyah);
+        if (ms >= endTiming['timestampTo'] - 200) { // 200ms buffer before it switches to next
+          _seekToAyah(_loopStartAyah!);
+        }
+      } catch (e) {
+        // Ignored if not found
+      }
+    }
+  }
+
+  void _seekToAyah(int ayahNumber) {
+    try {
+      final timing = _verseTimings.firstWhere((t) => t['ayahNumber'] == ayahNumber);
+      _audioService.seek(Duration(milliseconds: timing['timestampFrom']));
+    } catch (e) {
+      debugPrint('Ayah timing not found for $ayahNumber: $e');
+    }
+  }
+
+  void _showABLoopDialog() {
+    if (_verseTimings.isEmpty) return;
+    
+    int tempStart = _loopStartAyah ?? _verseTimings.first['ayahNumber'];
+    int tempEnd = _loopEndAyah ?? _verseTimings.last['ayahNumber'];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                backgroundColor: AppColors.background,
+                title: const Text(
+                  'تكرار الآيات (A-B Loop)',
+                  style: TextStyle(color: AppColors.gold, fontFamily: 'Amiri', fontSize: 18),
+                  textAlign: TextAlign.center,
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Column(
+                          children: [
+                            const Text('من آية', style: TextStyle(color: Colors.white, fontFamily: 'Amiri')),
+                            DropdownButton<int>(
+                              value: tempStart,
+                              dropdownColor: AppColors.cardBackground,
+                              style: const TextStyle(color: AppColors.gold, fontFamily: 'Amiri'),
+                              items: _verseTimings.map((t) {
+                                return DropdownMenuItem<int>(
+                                  value: t['ayahNumber'],
+                                  child: Text(t['ayahNumber'].toString()),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setDialogState(() {
+                                    tempStart = val;
+                                    if (tempEnd < tempStart) tempEnd = tempStart;
+                                  });
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            const Text('إلى آية', style: TextStyle(color: Colors.white, fontFamily: 'Amiri')),
+                            DropdownButton<int>(
+                              value: tempEnd,
+                              dropdownColor: AppColors.cardBackground,
+                              style: const TextStyle(color: AppColors.gold, fontFamily: 'Amiri'),
+                              items: _verseTimings.map((t) {
+                                return DropdownMenuItem<int>(
+                                  value: t['ayahNumber'],
+                                  child: Text(t['ayahNumber'].toString()),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setDialogState(() {
+                                    tempEnd = val;
+                                    if (tempStart > tempEnd) tempStart = tempEnd;
+                                  });
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _loopStartAyah = null;
+                        _loopEndAyah = null;
+                      });
+                      Navigator.pop(context);
+                    },
+                    child: const Text('إلغاء التكرار', style: TextStyle(color: Colors.redAccent, fontFamily: 'Amiri')),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _loopStartAyah = tempStart;
+                        _loopEndAyah = tempEnd;
+                      });
+                      _seekToAyah(tempStart);
+                      if (!_isPlaying) _playPageAudio();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('تطبيق', style: TextStyle(color: AppColors.gold, fontFamily: 'Amiri')),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   String _formatDuration(Duration d) {
@@ -191,6 +328,72 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               ),
             )
           else ...[
+            // أدوات الحفظ (A-B Loop و التظليل)
+            if (_verseTimings.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Text Blur Toggle
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isMemorizationMode = !_isMemorizationMode;
+                        });
+                        widget.onMemorizationModeChanged?.call(_isMemorizationMode);
+                      },
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isMemorizationMode ? Icons.visibility_off : Icons.visibility,
+                            color: _isMemorizationMode ? AppColors.gold : Colors.grey,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'إخفاء النص',
+                            style: TextStyle(
+                              color: _isMemorizationMode ? AppColors.gold : Colors.grey,
+                              fontSize: 12,
+                              fontFamily: 'Amiri',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // A-B Loop Dialog Button
+                    InkWell(
+                      onTap: () => _showABLoopDialog(),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.repeat,
+                            color: (_loopStartAyah != null && _loopEndAyah != null)
+                                ? AppColors.gold
+                                : Colors.grey,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            (_loopStartAyah != null && _loopEndAyah != null)
+                                ? 'تكرار: $_loopStartAyah-$_loopEndAyah'
+                                : 'تكرار الآيات',
+                            style: TextStyle(
+                              color: (_loopStartAyah != null && _loopEndAyah != null)
+                                  ? AppColors.gold
+                                  : Colors.grey,
+                              fontSize: 12,
+                              fontFamily: 'Amiri',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             SliderTheme(
               data: SliderThemeData(
                 thumbColor: AppColors.gold,

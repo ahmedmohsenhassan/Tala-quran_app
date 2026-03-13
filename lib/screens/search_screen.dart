@@ -259,12 +259,21 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () {
+                    // العثور على اسم السورة من القائمة المعرفة مسبقاً
+                    final surahNum = int.parse(ayah['surahNumber']);
+                    String surahName = "سورة $surahNum";
+                    try {
+                      final surahData = surahs.firstWhere((s) => s['number'] == surahNum);
+                      surahName = surahData['name'] ?? surahName;
+                    } catch (_) {}
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => SurahDetailScreen(
-                          surahNumber: int.parse(ayah['surahNumber']),
-                          surahName: "سورة ${ayah['surahNumber']}",
+                          surahNumber: surahNum,
+                          surahName: surahName,
+                          highlightedAyah: int.parse(ayah['verseNumber']),
                         ),
                       ),
                     );

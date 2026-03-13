@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'tafseer_service.dart';
 
 /// خدمة جلب نص القرآن الكريم
 /// Service to fetch Quranic text from API or local JSON assets
@@ -39,24 +41,66 @@ class QuranTextService {
 
   /// جلب تفسير آية معينة
   /// Fetch Tafseer for a specific verse
-  Future<String> getTafseer(int surah, int ayah) async {
+  Future<Map<String, String>> getTafseer(int surah, int ayah) async {
     try {
-      // استخدام تفسير الجلالين (رقم 16 في API quran.com)
-      // Using Tafseer Al-Jalalayn (ID 16)
+      // قراءة التفسير المفضل للمستخدم (الافتراضي 16 الجلالين)
+      final tafseerId = await TafseerService.getTafseerId();
+      final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
+
       final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/tafsirs/16',
+        'https://api.quran.com/api/v4/quran/tafsirs/$tafseerId',
         queryParameters: {'verse_key': '$surah:$ayah'},
       );
 
       if (response.statusCode == 200) {
         final List tafsirs = response.data['tafsirs'];
         if (tafsirs.isNotEmpty) {
-          return tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.";
+          return {
+            'text': tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.",
+            'name': tafseerName,
+          };
         }
       }
-      return "تعذر جلب التفسير.";
+      return {'text': "تعذر جلب التفسير.", 'name': tafseerName};
     } catch (e) {
-      return "خطأ في الاتصال: $e";
+      return {'text': "خطأ في الاتصال: $e", 'name': 'خطأ'};
+    }
+  }
+
+  /// جلب الترجمة لآية معينة (مع التخزين المؤقت - Offline Cache)
+  /// Fetch Translation for a specific verse with caching mechanism
+  Future<String> getTranslation(int surah, int ayah, int translationId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = 'translation_${translationId}_${surah}_$ayah';
+
+    // 1. محاولة جلبها من الكاش (Offline)
+    final cachedTranslation = prefs.getString(cacheKey);
+    if (cachedTranslation != null) {
+      return cachedTranslation;
+    }
+
+    // 2. إذا لم تكن موجودة، جلبها من API
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/quran/translations/$translationId',
+        queryParameters: {'verse_key': '$surah:$ayah'},
+      );
+
+      if (response.statusCode == 200) {
+        final List translations = response.data['translations'];
+        if (translations.isNotEmpty) {
+          // تنظيف نص الترجمة من أي وسوم HTML قبل الحفظ
+          String text = translations[0]['text'] ?? "";
+          text = text.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
+          
+          // 3. حفظها في الكاش للمرة القادمة
+          await prefs.setString(cacheKey, text);
+          return text;
+        }
+      }
+      return "";
+    } catch (e) {
+      return ""; // إرجاع نص فارغ في حالة الخطأ لعدم إفساد تجربة القراءة
     }
   }
 

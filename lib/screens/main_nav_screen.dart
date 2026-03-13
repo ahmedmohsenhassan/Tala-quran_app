@@ -7,6 +7,7 @@ import 'bookmarks_screen.dart';
 import 'recitations_screen.dart';
 import 'mushaf_viewer_screen.dart';
 import 'stats_screen.dart';
+import 'juz_hizb_screen.dart';
 
 class MainNavScreen extends StatefulWidget {
   final int initialPage;
@@ -27,6 +28,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
     _screens = [
       MushafViewerScreen(initialPage: widget.initialPage),
       const HomeScreen(),
+      const JuzHizbScreen(),
       const RecitationsScreen(),
       const StatsScreen(),
       const BookmarksScreen(),
@@ -77,9 +79,10 @@ class _MainNavScreenState extends State<MainNavScreen> {
               children: [
                 _buildNavItem(0, Icons.menu_book_rounded, 'المصحف'),
                 _buildNavItem(1, Icons.grid_view_rounded, 'الفهرس'),
-                _buildNavItem(2, Icons.mic_none_rounded, 'التلاوات'),
-                _buildNavItem(3, Icons.bar_chart_rounded, 'إحصائيات'),
-                _buildNavItem(4, Icons.bookmark_outline_rounded, 'المحفوظات'),
+                _buildNavItem(2, Icons.library_books_rounded, 'الأجزاء'),
+                _buildNavItem(3, Icons.mic_none_rounded, 'التلاوات'),
+                _buildNavItem(4, Icons.bar_chart_rounded, 'إحصائيات'),
+                _buildNavItem(5, Icons.bookmark_outline_rounded, 'المحفوظات'),
               ],
             ),
           ),

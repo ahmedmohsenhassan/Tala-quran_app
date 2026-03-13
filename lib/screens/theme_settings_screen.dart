@@ -1,0 +1,584 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../services/theme_service.dart';
+import '../services/translation_service.dart';
+import '../utils/app_colors.dart';
+import '../main.dart'; // للوصول لـ themeNotifier
+
+/// شاشة تخصيص المظهر الشاملة (Theme Settings)
+class ThemeSettingsScreen extends StatefulWidget {
+  const ThemeSettingsScreen({super.key});
+
+  @override
+  State<ThemeSettingsScreen> createState() => _ThemeSettingsScreenState();
+}
+
+class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
+  String _currentThemeMode = ThemeMode.dark.name;
+  String _currentColorTheme = ThemeService.colorEmerald;
+  String _currentFontTheme = ThemeService.fontAmiri;
+  double _currentFontSizeMultiplier = 1.0;
+  bool _isTranslationEnabled = false;
+  int _currentTranslationLang = TranslationService.langEnglish;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final mode = await ThemeService.getThemeMode();
+    final color = await ThemeService.getThemeColor();
+    final font = await ThemeService.getThemeFont();
+    final fontSize = await ThemeService.getFontSizeMultiplier();
+    final isTransEnabled = await TranslationService.isTranslationEnabled();
+    final transLang = await TranslationService.getTranslationLanguage();
+
+    if (mounted) {
+      setState(() {
+        _currentThemeMode = mode;
+        _currentColorTheme = color;
+        _currentFontTheme = font;
+        _currentFontSizeMultiplier = fontSize;
+        _isTranslationEnabled = isTransEnabled;
+        _currentTranslationLang = transLang;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onTranslationToggle(bool value) async {
+    setState(() => _isTranslationEnabled = value);
+    await TranslationService.setTranslationEnabled(value);
+  }
+
+  void _onTranslationLangChanged(int langId) async {
+    setState(() => _currentTranslationLang = langId);
+    await TranslationService.setTranslationLanguage(langId);
+  }
+
+  void _onModeChanged(String newMode) async {
+    setState(() => _currentThemeMode = newMode);
+    await ThemeService.setThemeMode(newMode);
+    
+    // update global app theme
+    if (newMode == ThemeService.light) {
+      themeNotifier.value = ThemeMode.light;
+    } else if (newMode == ThemeService.system) {
+      themeNotifier.value = ThemeMode.system;
+    } else {
+      themeNotifier.value = ThemeMode.dark;
+    }
+  }
+
+  void _onColorChanged(String newColor) async {
+    setState(() => _currentColorTheme = newColor);
+    await ThemeService.setThemeColor(newColor);
+    
+    // update AppColors values
+    AppColors.applyColorTheme(newColor);
+    
+    // Hack to trigger full app rebuild to apply new static colors
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation1, animation2) => const ThemeSettingsScreen(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+    );
+  }
+
+  void _onFontChanged(String newFont) async {
+    setState(() => _currentFontTheme = newFont);
+    await ThemeService.setThemeFont(newFont);
+    fontNotifier.value = newFont;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      );
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.background,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: AppColors.gold, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'تخصيص المظهر',
+            style: GoogleFonts.amiri(
+              color: AppColors.gold,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          centerTitle: true,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            // 1. Theme Mode (Dark/Light/System)
+            _buildSectionTitle('وضع الشاشة', Icons.brightness_6_rounded),
+            const SizedBox(height: 16),
+            _buildModeSelector(),
+
+            const SizedBox(height: 32),
+
+            // 2. Color Palette
+            _buildSectionTitle('الألوان الأساسية', Icons.palette_rounded),
+            const SizedBox(height: 16),
+            _buildColorSelectors(),
+
+            const SizedBox(height: 32),
+
+            // 3. Fonts
+            _buildSectionTitle('الخط القرآني المفضل', Icons.text_fields_rounded),
+            const SizedBox(height: 16),
+            _buildFontSelectors(),
+            
+            const SizedBox(height: 32),
+            
+            // 4. Font Size
+            _buildSectionTitle('حجم الخط', Icons.format_size_rounded),
+            const SizedBox(height: 16),
+            _buildFontSizeSlider(),
+            
+            const SizedBox(height: 32),
+            
+            // 5. Translations
+            _buildSectionTitle('الترجمة الإضافية', Icons.translate_rounded),
+            const SizedBox(height: 16),
+            _buildTranslationSettings(),
+            
+            const SizedBox(height: 32),
+            
+            // Preview
+            _buildSectionTitle('معاينة', Icons.visibility_rounded),
+            const SizedBox(height: 16),
+            _buildPreviewCard(),
+            
+            const SizedBox(height: 48),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.gold, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: GoogleFonts.amiri(
+            color: AppColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTranslationSettings() {
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: SwitchListTile(
+            title: Text(
+              'إظهار الترجمة أسفل الآيات',
+              style: GoogleFonts.amiri(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Text(
+              'ينطبق ذلك على شاشة تلاوة السور',
+              style: GoogleFonts.amiri(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            activeThumbColor: AppColors.gold,
+            value: _isTranslationEnabled,
+            onChanged: _onTranslationToggle,
+            secondary: const Icon(Icons.language_rounded, color: AppColors.gold),
+          ),
+        ),
+        if (_isTranslationEnabled) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSelectorCard(
+                  title: 'English (Saheeh Intl.)',
+                  icon: Icons.g_translate_rounded,
+                  isSelected: _currentTranslationLang == TranslationService.langEnglish,
+                  onTap: () => _onTranslationLangChanged(TranslationService.langEnglish),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSelectorCard(
+                  title: 'Urdu (Maududi)',
+                  icon: Icons.g_translate_rounded,
+                  isSelected: _currentTranslationLang == TranslationService.langUrdu,
+                  onTap: () => _onTranslationLangChanged(TranslationService.langUrdu),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildModeSelector() {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildSelectorCard(
+            title: 'داكن',
+            icon: Icons.nightlight_round,
+            isSelected: _currentThemeMode == ThemeService.dark,
+            onTap: () => _onModeChanged(ThemeService.dark),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildSelectorCard(
+            title: 'فاتح',
+            icon: Icons.wb_sunny_rounded,
+            isSelected: _currentThemeMode == ThemeService.light,
+            onTap: () => _onModeChanged(ThemeService.light),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildSelectorCard(
+            title: 'تلقائي',
+            icon: Icons.settings_suggest_rounded,
+            isSelected: _currentThemeMode == ThemeService.system,
+            onTap: () => _onModeChanged(ThemeService.system),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildColorSelectors() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        // Emerald
+        SizedBox(
+          width: (MediaQuery.of(context).size.width - 40 - 24) / 3, // 3 columns max
+          child: _buildColorCard(
+            colorValue: const Color(0xFF03251D), // Deep Emerald
+            label: 'زمردي',
+            isSelected: _currentColorTheme == ThemeService.colorEmerald,
+            onTap: () => _onColorChanged(ThemeService.colorEmerald),
+          ),
+        ),
+        
+        // Burgundy
+        SizedBox(
+          width: (MediaQuery.of(context).size.width - 40 - 24) / 3,
+          child: _buildColorCard(
+            colorValue: const Color(0xFF1F0E12), // Deep Burgundy
+            label: 'عنابي',
+            isSelected: _currentColorTheme == ThemeService.colorBurgundy,
+            onTap: () => _onColorChanged(ThemeService.colorBurgundy),
+          ),
+        ),
+        
+        // Blue
+        SizedBox(
+          width: (MediaQuery.of(context).size.width - 40 - 24) / 3,
+          child: _buildColorCard(
+            colorValue: const Color(0xFF0A1526), // Deep Navy
+            label: 'نيلي',
+            isSelected: _currentColorTheme == ThemeService.colorBlue,
+            onTap: () => _onColorChanged(ThemeService.colorBlue),
+          ),
+        ),
+
+        // Gold
+        SizedBox(
+          width: (MediaQuery.of(context).size.width - 40 - 24) / 3,
+          child: _buildColorCard(
+            colorValue: const Color(0xFF33270F), // Deep Gold
+            label: 'ذهبي',
+            isSelected: _currentColorTheme == ThemeService.colorGold,
+            onTap: () => _onColorChanged(ThemeService.colorGold),
+          ),
+        ),
+
+        // Monochrome
+        SizedBox(
+          width: (MediaQuery.of(context).size.width - 40 - 24) / 3,
+          child: _buildColorCard(
+            colorValue: const Color(0xFF1A1A1A), // Charcoal
+            label: 'داكن جداً',
+            isSelected: _currentColorTheme == ThemeService.colorMonochrome,
+            onTap: () => _onColorChanged(ThemeService.colorMonochrome),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFontSelectors() {
+    return Column(
+      children: [
+        _buildFontOptionCard('أميري (Amiri)', ThemeService.fontAmiri, (t) => GoogleFonts.amiri().merge(t)),
+        const SizedBox(height: 10),
+        _buildFontOptionCard('خط المصحف الكلاسيكي (عثماني)', ThemeService.fontUthmanic, (TextStyle t) => t.copyWith(fontFamily: 'Uthmanic')),
+        const SizedBox(height: 10),
+        _buildFontOptionCard('خط إندو-باك (مجيّدي)', ThemeService.fontIndopak, (TextStyle t) => t.copyWith(fontFamily: 'IndoPak')),
+        const SizedBox(height: 10),
+        _buildFontOptionCard('نسخ (Naskh)', ThemeService.fontNaskh, (t) => GoogleFonts.notoNaskhArabic().merge(t)),
+      ],
+    );
+  }
+
+  Widget _buildFontSizeSlider() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'ع',
+                style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 16),
+              ),
+              Text(
+                'ع',
+                style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 32),
+              ),
+            ],
+          ),
+          Slider(
+            value: _currentFontSizeMultiplier,
+            min: 0.8,
+            max: 2.5,
+            divisions: 17,
+            activeColor: AppColors.gold,
+            inactiveColor: AppColors.gold.withValues(alpha: 0.2),
+            onChanged: (val) {
+              setState(() => _currentFontSizeMultiplier = val);
+              fontNotifier.value = _currentFontTheme; // Trigger minor rebuild just in case, but fontSizeNotifier is better 
+              fontSizeNotifier.value = val;
+            },
+            onChangeEnd: (val) async {
+              await ThemeService.setFontSizeMultiplier(val);
+            },
+          ),
+          Text(
+            '${(_currentFontSizeMultiplier * 100).toInt()}%',
+            style: GoogleFonts.outfit(color: AppColors.gold, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectorCard({
+    required String title,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.gold.withValues(alpha: 0.15) : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.gold : Colors.white.withValues(alpha: 0.05),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? AppColors.gold : AppColors.textMuted,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: GoogleFonts.amiri(
+                color: isSelected ? AppColors.gold : AppColors.textPrimary,
+                fontSize: 14,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorCard({
+    required Color colorValue,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.gold : Colors.white.withValues(alpha: 0.05),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: colorValue,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, color: AppColors.gold, size: 20)
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: GoogleFonts.amiri(
+                color: isSelected ? AppColors.gold : AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontOptionCard(String label, String fontValue, TextStyle Function(TextStyle) fontStyle) {
+    final isSelected = _currentFontTheme == fontValue;
+    
+    return GestureDetector(
+      onTap: () => _onFontChanged(fontValue),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.gold.withValues(alpha: 0.1) : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.gold : Colors.white.withValues(alpha: 0.05),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected ? AppColors.gold : AppColors.textMuted,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: fontStyle(
+                TextStyle(
+                  color: isSelected ? AppColors.gold : AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPreviewCard() {
+    String fontFamily;
+    if (_currentFontTheme == ThemeService.fontNaskh) {
+      fontFamily = 'Noto Naskh Arabic';
+    } else if (_currentFontTheme == ThemeService.fontUthmanic) {
+      fontFamily = 'Uthmanic';
+    } else if (_currentFontTheme == ThemeService.fontIndopak) {
+      fontFamily = 'IndoPak';
+    } else {
+      fontFamily = 'Amiri';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.emeraldLight.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
+            style: TextStyle(
+              fontFamily: fontFamily,
+              color: AppColors.emeraldLight,
+              fontSize: 24 * _currentFontSizeMultiplier,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ ﴿١﴾ الرَّحْمَنِ الرَّحِيمِ ﴿٢﴾ مَالِكِ يَوْمِ الدِّينِ ﴿٣﴾ إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ ﴿٤﴾',
+            style: TextStyle(
+              fontFamily: fontFamily,
+              color: AppColors.textPrimary,
+              fontSize: 20 * _currentFontSizeMultiplier,
+              height: 1.8,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}

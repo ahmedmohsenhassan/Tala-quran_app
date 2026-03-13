@@ -3,18 +3,23 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/quran_text_service.dart';
+import '../services/translation_service.dart';
+import '../services/tafseer_service.dart';
 import '../utils/app_colors.dart';
+import '../main.dart'; // للوصول لـ fontSizeNotifier
 
 /// شاشة القراءة النصية (Text Reading Screen)
 /// Displays the actual Arabic text of the Surah
 class SurahDetailScreen extends StatefulWidget {
   final int surahNumber;
   final String surahName;
+  final int? highlightedAyah;
 
   const SurahDetailScreen({
     super.key,
     required this.surahNumber,
     required this.surahName,
+    this.highlightedAyah,
   });
 
   @override
@@ -24,11 +29,65 @@ class SurahDetailScreen extends StatefulWidget {
 class _SurahDetailScreenState extends State<SurahDetailScreen> {
   final QuranTextService _textService = QuranTextService();
   late Future<Map<String, dynamic>> _surahData;
+  bool _isTranslationEnabled = false;
+
+  // مفاتيح لتحديد موقع الآيات من أجل التمرير التلقائي
+  final Map<int, GlobalKey> _ayahKeys = {};
 
   @override
   void initState() {
     super.initState();
     _surahData = _textService.getSurahDetail(widget.surahNumber);
+    _loadTranslationsIfNeeded();
+  }
+
+  Future<void> _loadTranslationsIfNeeded() async {
+    _isTranslationEnabled = await TranslationService.isTranslationEnabled();
+    if (_isTranslationEnabled) {
+      final langId = await TranslationService.getTranslationLanguage();
+      final surahData = await _surahData;
+      try {
+        if (surahData.containsKey('ayahs')) {
+          final List ayahs = surahData['ayahs'];
+          Map<int, String> transMap = {};
+          
+          final futures = ayahs.map((ayah) async {
+            final int number = ayah['number'] ?? 0;
+            final text = await _textService.getTranslation(widget.surahNumber, number, langId);
+            return MapEntry(number, text);
+          });
+          
+          final results = await Future.wait(futures);
+          for (var entry in results) {
+            transMap[entry.key] = entry.value;
+          }
+          
+        }
+      } catch (e) {
+        // Handle gracefully
+      }
+    }
+    
+    if (widget.highlightedAyah != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToHighlightedAyah();
+      });
+    }
+  }
+
+  void _scrollToHighlightedAyah() {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final key = _ayahKeys[widget.highlightedAyah];
+      if (key != null && key.currentContext != null) {
+        Scrollable.ensureVisible(
+          key.currentContext!,
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOut,
+          alignment: 0.3,
+        );
+      }
+    });
   }
 
   void _showTafseer(int ayahNumber) {
@@ -36,76 +95,118 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(30),
-            topRight: Radius.circular(30),
-          ),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Container(
-              width: 50,
-              height: 5,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.6,
               decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(10),
+                color: AppColors.background,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(30),
+                  topRight: Radius.circular(30),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'تفسير الآية $ayahNumber',
-              style: GoogleFonts.amiri(
-                color: AppColors.gold,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Divider(color: Colors.white10),
-            const SizedBox(height: 10),
-            Expanded(
-              child: FutureBuilder<String>(
-                future: _textService.getTafseer(widget.surahNumber, ayahNumber),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                        child:
-                            CircularProgressIndicator(color: AppColors.gold));
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                        child: Text('خطأ: ${snapshot.error}',
-                            style: const TextStyle(color: Colors.red)));
-                  }
-
-                  // تنظيف النص من وسوم HTML إن وجدت
-                  // Clean HTML tags if any
-                  String tafseerText = snapshot.data ?? "لا يوجد تفسير.";
-                  tafseerText =
-                      tafseerText.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
-
-                  return SingleChildScrollView(
-                    child: Text(
-                      tafseerText,
-                      style: GoogleFonts.amiri(
-                        color: AppColors.textPrimary,
-                        fontSize: 18,
-                        height: 1.8,
-                      ),
-                      textAlign: TextAlign.justify,
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'تفسير الآية $ayahNumber',
+                        style: GoogleFonts.amiri(
+                          color: AppColors.gold,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      // اختيار التفسير
+                      FutureBuilder<int>(
+                        future: TafseerService.getTafseerId(),
+                        builder: (context, tafseerPrefSnapshot) {
+                          if (!tafseerPrefSnapshot.hasData) {
+                            return const SizedBox();
+                          }
+                          return DropdownButton<int>(
+                            value: tafseerPrefSnapshot.data,
+                            dropdownColor: AppColors.cardBackground,
+                            icon: const Icon(Icons.arrow_drop_down, color: AppColors.gold),
+                            underline: const SizedBox(),
+                            style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 16),
+                            items: TafseerService.availableTafseers.entries.map((entry) {
+                              return DropdownMenuItem<int>(
+                                value: entry.key,
+                                child: Text(entry.value),
+                              );
+                            }).toList(),
+                            onChanged: (newTafseerId) async {
+                              if (newTafseerId != null) {
+                                await TafseerService.setTafseerId(newTafseerId);
+                                setModalState(() {}); // إعادة بناء نافذة التفسير
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white10),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: FutureBuilder<Map<String, String>>(
+                      future: _textService.getTafseer(widget.surahNumber, ayahNumber),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator(color: AppColors.gold));
+                        }
+                        if (snapshot.hasError) {
+                          return Center(
+                              child: Text('خطأ: ${snapshot.error}',
+                                  style: const TextStyle(color: Colors.red)));
+                        }
+
+                        // تنظيف النص من وسوم HTML إن وجدت
+                        String tafseerText = snapshot.data?['text'] ?? "لا يوجد تفسير.";
+                        tafseerText = tafseerText.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
+
+                        return SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: ValueListenableBuilder<double>(
+                            valueListenable: fontSizeNotifier,
+                            builder: (context, multiplier, child) {
+                              return Text(
+                                tafseerText,
+                                textAlign: TextAlign.right,
+                                style: GoogleFonts.amiri(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 20 * multiplier,
+                                  height: 1.8,
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 

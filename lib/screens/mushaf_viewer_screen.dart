@@ -1,23 +1,31 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/mushaf_audio_player.dart';
+import '../widgets/ai_tajweed_sheet.dart';
+import '../services/recitation_recognition_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/streak_service.dart';
 import '../services/reading_stats_service.dart';
 import '../services/khatma_service.dart';
+import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/ayah_sync_service.dart';
 import '../services/reading_service.dart';
 import '../models/ayah_coordinate.dart';
 import '../widgets/ayah_highlighter.dart';
 import 'tafseer_screen.dart';
+import 'package:share_plus/share_plus.dart';
+import '../services/kids_mode_service.dart';
+import 'package:provider/provider.dart';
 
 /// Premium Mushaf Viewer — عارض المصحف الاحترافي
 /// A realistic, premium 3D Quran viewer experience
@@ -42,6 +50,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   bool _isLoading = true;
   String _currentSurahName = '';
   int _currentJuz = 1;
+
+  bool _isMemorizationMode = false;
+  bool _isPeeking = false;
 
   // Highlighting state
   int? _activeAyah;
@@ -175,13 +186,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // ============================================================
   //  PREMIUM COLORS
   // ============================================================
-  static const Color _deepGreen = Color(0xFF0B3B2D);
+  Color get _deepGreen => AppColors.background;
   static const Color _richGold = Color(0xFFD4A947);
   static const Color _lightGold = Color(0xFFE8C76A);
   static const Color _darkGold = Color(0xFFB8860B);
   static const Color _parchment = Color(0xFFFDF5E6);
   static const Color _parchmentDark = Color(0xFFF5E6C8);
-  static const Color _spineColor = Color(0xFF062218);
+  Color get _spineColor => AppColors.cardBackground;
   static const Color _pageShadow = Color(0x33000000);
 
   // ============================================================
@@ -232,20 +243,132 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                       .toList();
                                 });
                               },
+                              onMemorizationModeChanged: (isBlurring) {
+                                if (mounted) {
+                                  setState(() {
+                                    _isMemorizationMode = isBlurring;
+                                  });
+                                }
+                              },
                               onClose: () {
                                 setState(() {
                                   _showAudioPlayer = false;
                                   _activeAyah = null;
                                   _activeAyahCoordinates = [];
+                                  _isMemorizationMode = false;
                                 });
                               },
                             )
                           : const SizedBox.shrink(),
                     ),
                   ),
+                  // === زر مختبر التجويد AI ===
+                  if (_showBars && !_showAudioPlayer)
+                    Positioned(
+                      bottom: 100,
+                      right: 24,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 500),
+                        builder: (context, value, child) {
+                          return Transform.scale(
+                            scale: value,
+                            child: child,
+                          );
+                        },
+                        child: FloatingActionButton(
+                          onPressed: () => _openAITajweedLab(),
+                          backgroundColor: AppColors.gold,
+                          elevation: 8,
+                          child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ),
+                  // === زر التعرّف على التلاوة (🎙️) ===
+                  if (_showBars && !_showAudioPlayer)
+                    Positioned(
+                      bottom: 100,
+                      left: 24,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 600),
+                        builder: (context, value, child) {
+                          return Transform.scale(
+                            scale: value,
+                            child: child,
+                          );
+                        },
+                        child: FloatingActionButton(
+                          onPressed: () => _recognizeCurrentRecitation(),
+                          backgroundColor: Colors.blueAccent,
+                          elevation: 8,
+                          child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 30),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
+    );
+  }
+
+  void _recognizeCurrentRecitation() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('جاري الاستماع للتعرف على الآية...'),
+        duration: Duration(seconds: 3),
+        backgroundColor: Colors.blueAccent,
+      ),
+    );
+
+    final result = await RecitationRecognitionService().recognizeAyah();
+    
+    if (result != null && mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.background,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'تم التعرّف على الآية',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.amiri(color: AppColors.gold, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                result.text,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.amiri(fontSize: 22, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'سورة الفاتحة - آية ${result.ayah}',
+                style: GoogleFonts.amiri(color: AppColors.textSecondary, fontSize: 16),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('حسناً', style: GoogleFonts.amiri(color: AppColors.gold)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _openAITajweedLab() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AITajweedSheet(
+        surah: QuranPageHelper.getSurahForPage(_currentPage),
+        ayah: _activeAyah ?? 1,
+      ),
     );
   }
 
@@ -349,30 +472,87 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                             // PageView
                             Directionality(
                               textDirection: TextDirection.rtl,
-                              child: PageView.builder(
-                                controller: _pageController,
-                                itemCount: 604,
-                                onPageChanged: (index) {
-                                  final page = index + 1;
-                                  setState(() {
-                                    _currentPage = page;
-                                    _currentSurahName =
-                                        QuranPageHelper.getSurahNameForPage(
-                                            page);
-                                    _currentJuz =
-                                        QuranPageHelper.getJuzForPage(page);
-                                    if (_showAudioPlayer) {
-                                      _showAudioPlayer = false;
-                                    }
-                                  });
-                                  _recordPageVisit(page);
-                                  // Trigger subtle page turn effect
-                                  _pageTurnController.forward(from: 0);
-                                },
-                                itemBuilder: (context, index) {
-                                  final pageNumber = index + 1;
-                                  return RepaintBoundary(
-                                    child: _buildPremiumPage(pageNumber),
+                              child: AnimatedBuilder(
+                                animation: _pageController,
+                                builder: (context, child) {
+                                  return PageView.builder(
+                                    controller: _pageController,
+                                    itemCount: 604,
+                                    onPageChanged: (index) {
+                                      final page = index + 1;
+                                      
+                                      // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
+                                      HapticFeedback.lightImpact();
+
+                                      setState(() {
+                                        _currentPage = page;
+                                        _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
+                                        _currentJuz = QuranPageHelper.getJuzForPage(page);
+                                        if (_showAudioPlayer) {
+                                          _showAudioPlayer = false;
+                                        }
+                                      });
+                                      _recordPageVisit(page);
+                                      _pageTurnController.forward(from: 0);
+                                    },
+                                    itemBuilder: (context, index) {
+                                      final pageNumber = index + 1;
+                                      double scale = 1.0;
+                                      double angle = 0.0;
+                                      double opacity = 1.0;
+
+                                      if (_pageController.position.haveDimensions) {
+                                        final pageOffset = _pageController.page! - index;
+                                        
+                                        // When flipping backward (right to left in RTL)
+                                        if (pageOffset > 0) {
+                                          angle = (pageOffset * -3.14 / 2.5).clamp(-3.14/2.5, 0.0);
+                                          opacity = (1.0 - pageOffset).clamp(0.0, 1.0);
+                                        } 
+                                        // When flipping forward (left to right in RTL)
+                                        else if (pageOffset < 0) {
+                                          angle = (pageOffset * -3.14 / 2.5).clamp(0.0, 3.14/2.5);
+                                          opacity = (1.0 + pageOffset).clamp(0.0, 1.0);
+                                        }
+                                        
+                                        // Scale down slightly while flipping
+                                        scale = (1 - (pageOffset.abs() * 0.1)).clamp(0.9, 1.0);
+                                      }
+
+                                      return Transform(
+                                        alignment: angle < 0 ? Alignment.centerRight : Alignment.centerLeft,
+                                        transform: Matrix4.identity()
+                                          ..setEntry(3, 2, 0.001) // perspective
+                                          ..scaleByVector3(vmath.Vector3(scale, scale, 1.0))
+                                          ..rotateY(angle),
+                                        child: Opacity(
+                                          opacity: opacity,
+                                          child: Stack(
+                                            children: [
+                                              RepaintBoundary(
+                                                child: _buildPremiumPage(pageNumber),
+                                              ),
+                                              // Dynamic Shadow based on curl angle
+                                              if (angle != 0)
+                                                Positioned.fill(
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        begin: angle < 0 ? Alignment.centerRight : Alignment.centerLeft,
+                                                        end: angle < 0 ? Alignment.centerLeft : Alignment.centerRight,
+                                                        colors: [
+                                                          Colors.black.withValues(alpha: angle.abs() * 0.3),
+                                                          Colors.transparent,
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   );
                                 },
                               ),
@@ -502,6 +682,24 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
           children: [
             // محتوى الصفحة
             _buildPageImage(pageNumber),
+
+            // Blur layer for memorization mode
+            if (_isMemorizationMode && !_isPeeking)
+              Positioned.fill(
+                child: Listener(
+                  onPointerDown: (_) => setState(() => _isPeeking = true),
+                  onPointerUp: (_) => setState(() => _isPeeking = false),
+                  onPointerCancel: (_) => setState(() => _isPeeking = false),
+                  // Use behavior to ensure it catches taps on the transparent container
+                  behavior: HitTestBehavior.opaque,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                    child: Container(
+                      color: Colors.white.withValues(alpha: 0.05),
+                    ),
+                  ),
+                ),
+              ),
 
             // إطار زخرفي عتيق حول المحتوي
             IgnorePointer(
@@ -736,6 +934,15 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
               const SizedBox(width: 12),
 
+              // زر المشاركة
+              _PremiumIconButton(
+                icon: Icons.share_rounded,
+                size: 22,
+                onPressed: () => _shareCurrentPage(),
+              ),
+
+              const SizedBox(width: 8),
+
               // زر الحفظ
               _PremiumIconButton(
                 icon: Icons.bookmark_border_rounded,
@@ -775,8 +982,16 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // ============================================================
   Widget _buildPremiumPlaceholder(int pageNumber) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
+      decoration: BoxDecoration(
+        color: _spineColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [_parchment, _parchmentDark, _parchment],
@@ -824,6 +1039,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         ),
       ),
     );
+  }
+
+  // ============================================================
+  // ============================================================
+  //  SHARE CURRENT PAGE
+  // ============================================================
+  void _shareCurrentPage() {
+    final text = '📖 $_currentSurahName\n'
+        '📄 صفحة $_currentPage — الجزء $_currentJuz\n'
+        '\n'
+        '~ تلا قرآن 🕌';
+    Share.share(text);
   }
 
   // ============================================================
@@ -1016,13 +1243,13 @@ class _PremiumBackgroundPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // تدرج أساسي
     final bgPaint = Paint()
-      ..shader = const LinearGradient(
+      ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Color(0xFF0A3326),
-          Color(0xFF062218),
-          Color(0xFF041A12),
+          AppColors.cardBackground,
+          AppColors.background,
+          AppColors.background,
         ],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);

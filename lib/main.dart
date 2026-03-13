@@ -2,12 +2,33 @@
 // 🌐 Tala Quran App - Entry Point
 
 import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
 import 'services/notification_service.dart';
+import 'services/kids_mode_service.dart';
+import 'package:provider/provider.dart';
+import 'services/theme_service.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+/// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
+final ValueNotifier<String> fontNotifier = ValueNotifier(ThemeService.fontAmiri);
+final ValueNotifier<double> fontSizeNotifier = ValueNotifier(1.0);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // تحميل المظهر المحفوظ
+  final savedTheme = await ThemeService.getThemeMode();
+  final savedColor = await ThemeService.getThemeColor();
+  final savedFont = await ThemeService.getThemeFont();
+  final savedFontSize = await ThemeService.getFontSizeMultiplier();
+  
+  themeNotifier.value = _parseThemeMode(savedTheme);
+  fontNotifier.value = savedFont;
+  fontSizeNotifier.value = savedFontSize;
+  AppColors.applyColorTheme(savedColor);
 
   // Initialize push notifications and verse database
   await NotificationService.initialize();
@@ -15,7 +36,23 @@ void main() async {
   // Try refreshing verse database from internet (non-blocking)
   NotificationService.refreshVerseDb();
 
-  runApp(const TalaQuranApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => KidsModeService(),
+      child: const TalaQuranApp(),
+    ),
+  );
+}
+
+ThemeMode _parseThemeMode(String mode) {
+  switch (mode) {
+    case ThemeService.light:
+      return ThemeMode.light;
+    case ThemeService.system:
+      return ThemeMode.system;
+    default:
+      return ThemeMode.dark;
+  }
 }
 
 class TalaQuranApp extends StatelessWidget {
@@ -23,24 +60,112 @@ class TalaQuranApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'تلا قرآن - Tala Quran',
-      theme: ThemeData(
-        fontFamily: 'Amiri',
-        primaryColor: AppColors.gold,
-        scaffoldBackgroundColor: AppColors.background,
-        colorScheme: const ColorScheme.dark(
-          primary: AppColors.gold,
-          secondary: AppColors.emeraldLight,
-          surface: AppColors.cardBackground,
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: AppColors.textPrimary),
-          bodyMedium: TextStyle(color: AppColors.textSecondary),
-        ),
-      ),
-      home: const SplashScreen(), // تبدأ بشاشة البداية ثم تنتقل للرئيسية
+    return ValueListenableBuilder<String>(
+      valueListenable: fontNotifier,
+      builder: (context, currentFont, _) {
+        String fontFamily = currentFont;
+        if (currentFont == ThemeService.fontNaskh) {
+          fontFamily = 'Noto Naskh Arabic';
+        }
+
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, currentMode, _) {
+            return Consumer<KidsModeService>(
+              builder: (context, kidsMode, child) {
+                final isKids = kidsMode.isKidsModeActive;
+                final primaryColor = isKids ? kidsMode.primaryColor : AppColors.gold;
+                final bgColor = isKids ? kidsMode.backgroundColor : (currentMode == ThemeMode.dark ? AppColors.background : AppColors.lightBackground);
+                
+                return MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  title: 'تلا قرآن',
+                  themeMode: currentMode,
+                  theme: ThemeData(
+                    fontFamily: fontFamily,
+                    brightness: Brightness.light,
+                    primaryColor: primaryColor,
+                    scaffoldBackgroundColor: isKids ? bgColor : AppColors.lightBackground,
+                    colorScheme: ColorScheme.light(
+                      primary: primaryColor,
+                      secondary: AppColors.emeraldLight,
+                      surface: isKids ? kidsMode.cardColor : AppColors.lightCardBackground,
+                    ),
+                    textTheme: GoogleFonts.amiriTextTheme().copyWith(
+                      bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.lightTextPrimary),
+                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withOpacity(0.8) : AppColors.lightTextSecondary),
+                    ),
+                    pageTransitionsTheme: const PageTransitionsTheme(
+                      builders: {
+                        TargetPlatform.android: BookPageTransitionsBuilder(),
+                        TargetPlatform.iOS: BookPageTransitionsBuilder(),
+                      },
+                    ),
+                  ),
+                  darkTheme: ThemeData(
+                    fontFamily: fontFamily,
+                    brightness: Brightness.dark,
+                    primaryColor: primaryColor,
+                    scaffoldBackgroundColor: isKids ? bgColor : AppColors.background,
+                    colorScheme: ColorScheme.dark(
+                      primary: primaryColor,
+                      secondary: AppColors.emeraldLight,
+                      surface: isKids ? kidsMode.cardColor : AppColors.cardBackground,
+                    ),
+                    textTheme: GoogleFonts.amiriTextTheme(ThemeData.dark().textTheme).copyWith(
+                      bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.textPrimary),
+                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withOpacity(0.8) : AppColors.textSecondary),
+                    ),
+                    pageTransitionsTheme: const PageTransitionsTheme(
+                      builders: {
+                        TargetPlatform.android: BookPageTransitionsBuilder(),
+                        TargetPlatform.iOS: BookPageTransitionsBuilder(),
+                      },
+                    ),
+                  ),
+                  home: const SplashScreen(),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// مظهر انتقالات الصفحات - يحاكي طي صفحات الكتاب
+class BookPageTransitionsBuilder extends PageTransitionsBuilder {
+  const BookPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final double progress = animation.value;
+        final double scale = 0.95 + (progress * 0.05);
+        final double angle = (1.0 - progress) * -0.5;
+        
+        return Transform(
+          alignment: Alignment.centerRight,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..scaleByVector3(vmath.Vector3(scale, scale, 1.0))
+            ..rotateY(angle),
+          child: Opacity(
+            opacity: progress.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: child,
     );
   }
 }

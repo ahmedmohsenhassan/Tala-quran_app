@@ -44,9 +44,9 @@ class _KhatmaScreenState extends State<KhatmaScreen> {
           textDirection: TextDirection.rtl,
           child: Container(
             padding: const EdgeInsets.all(28),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: AppColors.cardBackground,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

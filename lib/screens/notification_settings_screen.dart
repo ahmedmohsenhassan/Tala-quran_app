@@ -53,7 +53,7 @@ class _NotificationSettingsScreenState
       builder: (context, child) {
         return Theme(
           data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
+            colorScheme: ColorScheme.dark(
               primary: AppColors.gold,
               onPrimary: Colors.black,
               surface: AppColors.cardBackground,

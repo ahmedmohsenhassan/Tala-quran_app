@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:tala_quran_app/screens/main_nav_screen.dart';
+import 'package:tala_quran_app/screens/main_dashboard_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/bookmark_service.dart';
 import '../services/reading_service.dart';
@@ -165,8 +165,7 @@ class _SplashScreenState extends State<SplashScreen>
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) =>
-              MainNavScreen(initialPage: _lastReadPage),
+          pageBuilder: (_, __, ___) => const MainDashboardScreen(),
           transitionDuration: const Duration(milliseconds: 800),
           transitionsBuilder: (_, anim, __, child) =>
               FadeTransition(opacity: anim, child: child),
@@ -660,10 +659,9 @@ class _PremiumBookCover extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Image(
-                      image: AssetImage('assets/images/logo.png'),
-                      width: 75,
-                      height: 75,
+                    CustomPaint(
+                      size: const Size(74, 74),
+                      painter: _MedallionOrnamentPainter(),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -1221,4 +1219,73 @@ class _GoldParticlesPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _GoldParticlesPainter oldDelegate) =>
       oldDelegate.progress != progress;
+}
+
+/// زخرفة الميدالية المركزية - Islamic Medallion Ornament
+class _MedallionOrnamentPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = _kRichGold.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    final outerRadius = size.width * 0.45;
+    final innerRadius = size.width * 0.25;
+
+    // Draw 8-pointed star (Rub el Hizb style)
+    final path = Path();
+    for (int i = 0; i < 8; i++) {
+      final angle = i * pi / 4;
+      final x = center.dx + outerRadius * cos(angle);
+      final y = center.dy + outerRadius * sin(angle);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+
+      final midAngle = angle + pi / 8;
+      final mx = center.dx + innerRadius * cos(midAngle);
+      final my = center.dy + innerRadius * sin(midAngle);
+      path.lineTo(mx, my);
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+
+    // Draw 2nd rotated star
+    final path2 = Path();
+    for (int i = 0; i < 8; i++) {
+      final angle = (i * pi / 4) + pi / 8;
+      final x = center.dx + outerRadius * 0.8 * cos(angle);
+      final y = center.dy + outerRadius * 0.8 * sin(angle);
+      if (i == 0) {
+        path2.moveTo(x, y);
+      } else {
+        path2.lineTo(x, y);
+      }
+
+      final midAngle = angle + pi / 8;
+      final mx = center.dx + innerRadius * 0.7 * cos(midAngle);
+      final my = center.dy + innerRadius * 0.7 * sin(midAngle);
+      path2.lineTo(mx, my);
+    }
+    path2.close();
+    canvas.drawPath(path2, paint..color = _kRichGold.withValues(alpha: 0.4));
+
+    // Decorative dots
+    for (int i = 0; i < 8; i++) {
+      final angle = i * pi / 4;
+      final x = center.dx + outerRadius * 1.1 * cos(angle);
+      final y = center.dy + outerRadius * 1.1 * sin(angle);
+      canvas.drawCircle(Offset(x, y), 1.5, Paint()..color = _kRichGold.withValues(alpha: 0.6));
+    }
+
+    // Inner circle
+    canvas.drawCircle(center, innerRadius * 0.5, Paint()..style = PaintingStyle.fill..color = _kRichGold.withValues(alpha: 0.2));
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
