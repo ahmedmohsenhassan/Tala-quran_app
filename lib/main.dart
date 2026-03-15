@@ -16,6 +16,7 @@ import 'widgets/error_boundary.dart';
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 final ValueNotifier<String> fontNotifier = ValueNotifier(ThemeService.fontAmiri);
 final ValueNotifier<double> fontSizeNotifier = ValueNotifier(1.0);
+final ValueNotifier<String> colorNotifier = ValueNotifier(ThemeService.colorEmerald);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,7 @@ void main() async {
   themeNotifier.value = _parseThemeMode(savedTheme);
   fontNotifier.value = savedFont;
   fontSizeNotifier.value = savedFontSize;
+  colorNotifier.value = savedColor;
   AppColors.applyColorTheme(savedColor);
 
   // Initialize push notifications and verse database (non-blocking for faster startup)
@@ -70,62 +72,91 @@ class TalaQuranApp extends StatelessWidget {
           fontFamily = 'Noto Naskh Arabic';
         }
 
-        return ValueListenableBuilder<ThemeMode>(
-          valueListenable: themeNotifier,
-          builder: (context, currentMode, _) {
-            return Consumer<KidsModeService>(
-              builder: (context, kidsMode, child) {
-                final isKids = kidsMode.isKidsModeActive;
-                final primaryColor = isKids ? kidsMode.primaryColor : AppColors.gold;
-                final bgColor = isKids ? kidsMode.backgroundColor : (currentMode == ThemeMode.dark ? AppColors.background : AppColors.lightBackground);
-                
-                return MaterialApp(
-                  debugShowCheckedModeBanner: false,
-                  title: 'تلا قرآن',
-                  themeMode: currentMode,
-                  theme: ThemeData(
-                    fontFamily: fontFamily,
-                    brightness: Brightness.light,
-                    primaryColor: primaryColor,
-                    scaffoldBackgroundColor: isKids ? bgColor : AppColors.lightBackground,
-                    colorScheme: ColorScheme.light(
-                      primary: primaryColor,
-                      secondary: AppColors.emeraldLight,
-                      surface: isKids ? kidsMode.cardColor : AppColors.lightCardBackground,
-                    ),
-                    textTheme: GoogleFonts.amiriTextTheme().copyWith(
-                      bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.lightTextPrimary),
-                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withValues(alpha: 0.8) : AppColors.lightTextSecondary),
-                    ),
-                    pageTransitionsTheme: const PageTransitionsTheme(
-                      builders: {
-                        TargetPlatform.android: BookPageTransitionsBuilder(),
-                        TargetPlatform.iOS: BookPageTransitionsBuilder(),
-                      },
-                    ),
-                  ),
-                  darkTheme: ThemeData(
-                    fontFamily: fontFamily,
-                    brightness: Brightness.dark,
-                    primaryColor: primaryColor,
-                    scaffoldBackgroundColor: isKids ? bgColor : AppColors.background,
-                    colorScheme: ColorScheme.dark(
-                      primary: primaryColor,
-                      secondary: AppColors.emeraldLight,
-                      surface: isKids ? kidsMode.cardColor : AppColors.cardBackground,
-                    ),
-                    textTheme: GoogleFonts.amiriTextTheme(ThemeData.dark().textTheme).copyWith(
-                      bodyLarge: TextStyle(color: isKids ? Colors.brown : AppColors.textPrimary),
-                      bodyMedium: TextStyle(color: isKids ? Colors.brown.withValues(alpha: 0.8) : AppColors.textSecondary),
-                    ),
-                    pageTransitionsTheme: const PageTransitionsTheme(
-                      builders: {
-                        TargetPlatform.android: BookPageTransitionsBuilder(),
-                        TargetPlatform.iOS: BookPageTransitionsBuilder(),
-                      },
-                    ),
-                  ),
-                  home: const SplashScreen(),
+        return ValueListenableBuilder<String>(
+          valueListenable: colorNotifier,
+          builder: (context, currentColor, _) {
+            return ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeNotifier,
+              builder: (context, currentMode, _) {
+                return Consumer<KidsModeService>(
+                  builder: (context, kidsMode, child) {
+                    final isKids = kidsMode.isKidsModeActive;
+                    final primaryColor = isKids ? kidsMode.primaryColor : AppColors.gold;
+                    final bgColor = isKids
+                        ? kidsMode.backgroundColor
+                        : (currentMode == ThemeMode.dark
+                            ? AppColors.background
+                            : AppColors.lightBackground);
+
+                    return MaterialApp(
+                      debugShowCheckedModeBanner: false,
+                      title: 'تلا قرآن',
+                      themeMode: currentMode,
+                      theme: ThemeData(
+                        fontFamily: fontFamily,
+                        brightness: Brightness.light,
+                        primaryColor: primaryColor,
+                        scaffoldBackgroundColor:
+                            isKids ? bgColor : AppColors.lightBackground,
+                        colorScheme: ColorScheme.light(
+                          primary: primaryColor,
+                          secondary: AppColors.emeraldLight,
+                          surface: isKids
+                              ? kidsMode.cardColor
+                              : AppColors.lightCardBackground,
+                        ),
+                        textTheme: GoogleFonts.amiriTextTheme().copyWith(
+                          bodyLarge: TextStyle(
+                              color: isKids
+                                  ? Colors.brown
+                                  : AppColors.lightTextPrimary),
+                          bodyMedium: TextStyle(
+                              color: isKids
+                                  ? Colors.brown.withValues(alpha: 0.8)
+                                  : AppColors.lightTextSecondary),
+                        ),
+                        pageTransitionsTheme: const PageTransitionsTheme(
+                          builders: {
+                            TargetPlatform.android: BookPageTransitionsBuilder(),
+                            TargetPlatform.iOS: BookPageTransitionsBuilder(),
+                          },
+                        ),
+                      ),
+                      darkTheme: ThemeData(
+                        fontFamily: fontFamily,
+                        brightness: Brightness.dark,
+                        primaryColor: primaryColor,
+                        scaffoldBackgroundColor:
+                            isKids ? bgColor : AppColors.background,
+                        colorScheme: ColorScheme.dark(
+                          primary: primaryColor,
+                          secondary: AppColors.emeraldLight,
+                          surface: isKids
+                              ? kidsMode.cardColor
+                              : AppColors.cardBackground,
+                        ),
+                        textTheme: GoogleFonts.amiriTextTheme(
+                                ThemeData.dark().textTheme)
+                            .copyWith(
+                          bodyLarge: TextStyle(
+                              color: isKids
+                                  ? Colors.brown
+                                  : AppColors.textPrimary),
+                          bodyMedium: TextStyle(
+                              color: isKids
+                                  ? Colors.brown.withValues(alpha: 0.8)
+                                  : AppColors.textSecondary),
+                        ),
+                        pageTransitionsTheme: const PageTransitionsTheme(
+                          builders: {
+                            TargetPlatform.android: BookPageTransitionsBuilder(),
+                            TargetPlatform.iOS: BookPageTransitionsBuilder(),
+                          },
+                        ),
+                      ),
+                      home: const SplashScreen(),
+                    );
+                  },
                 );
               },
             );

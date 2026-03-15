@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/audio_service.dart';
@@ -43,11 +44,16 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   int? _loopStartAyah;
   int? _loopEndAyah;
 
+  // Stream Subscriptions
+  StreamSubscription? _playerStateSub;
+  StreamSubscription? _durationSub;
+  StreamSubscription? _positionSub;
+
   @override
   void initState() {
     super.initState();
 
-    _audioService.playerStateStream.listen((state) {
+    _playerStateSub = _audioService.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state.playing;
@@ -59,13 +65,13 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       }
     });
 
-    _audioService.durationStream.listen((d) {
+    _durationSub = _audioService.durationStream.listen((d) {
       if (mounted && d != null) {
         setState(() => _duration = d);
       }
     });
 
-    _audioService.positionStream.listen((p) {
+    _positionSub = _audioService.positionStream.listen((p) {
       if (mounted) {
         setState(() => _position = p);
         _updateCurrentAyah(p);
@@ -74,6 +80,20 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
 
     // Start playing immediately when opened
     _initAndPlay();
+  }
+
+  @override
+  void dispose() {
+    _playerStateSub?.cancel();
+    _durationSub?.cancel();
+    _positionSub?.cancel();
+    
+    // Safely stop audio without awaiting to avoid blocking the disposal phase
+    _audioService.stop().catchError((e) {
+      debugPrint('Error stopping audio in dispose: $e');
+    });
+    
+    super.dispose();
   }
 
   Future<void> _initAndPlay() async {
@@ -281,11 +301,6 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     return '$minutes:$seconds';
   }
 
-  @override
-  void dispose() {
-    _audioService.stop();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {

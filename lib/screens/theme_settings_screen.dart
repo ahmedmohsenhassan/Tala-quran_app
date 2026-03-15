@@ -83,16 +83,8 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     // update AppColors values
     AppColors.applyColorTheme(newColor);
     
-    // Hack to trigger full app rebuild to apply new static colors
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation1, animation2) => const ThemeSettingsScreen(),
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: Duration.zero,
-      ),
-    );
+    // update global color notifier to trigger app-wide rebuild
+    colorNotifier.value = newColor;
   }
 
   void _onFontChanged(String newFont) async {

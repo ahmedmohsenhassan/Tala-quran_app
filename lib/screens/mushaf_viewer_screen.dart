@@ -108,6 +108,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
   // Optimization
   bool _pageFileExists = false;
+  int _lastLoadId = 0; // Race condition protection
   Timer? _statsTimer;
 
   // Animation controllers for premium effects
@@ -186,13 +187,24 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     }
   }
 
-  Future<void> _loadPageData(int pageNumber) async {
-    setState(() => _isLoading = true);
+  Future<void> _loadPageData(int pageNumber, {bool isBackground = false}) async {
+    final currentLoadId = ++_lastLoadId;
+    
+    if (!isBackground) setState(() => _isLoading = true);
     await _initMushafDir();
+    
+    // Check if this request is still relevant
+    if (currentLoadId != _lastLoadId) return;
+
     _currentSurahName = QuranPageHelper.getSurahNameForPage(pageNumber);
     _currentJuz = QuranPageHelper.getJuzForPage(pageNumber);
 
-    _pageCoordinates = await AyahSyncService().getPageCoordinates(pageNumber);
+    final coords = await AyahSyncService().getPageCoordinates(pageNumber);
+    
+    // Check again after async gap
+    if (currentLoadId != _lastLoadId) return;
+
+    _pageCoordinates = coords;
 
     if (_isDownloaded && _mushafDirPath != null) {
       final file = File(
@@ -202,7 +214,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       _pageFileExists = false;
     }
 
-    setState(() => _isLoading = false);
+    if (!isBackground) setState(() => _isLoading = false);
+    if (isBackground && mounted) {
+      setState(() {
+        // Refresh active coordinates if audio is already playing on this page
+        if (_activeAyah != null) {
+          _activeAyahCoordinates = _pageCoordinates
+              .where((c) => c.ayahNumber == _activeAyah)
+              .toList();
+          debugPrint('📍 Coordinates refreshed for Ayah $_activeAyah: ${_activeAyahCoordinates.length} segments');
+        }
+      });
+    }
   }
 
   void _recordPageVisit(int page) {
@@ -233,10 +256,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   @override
   void dispose() {
     _statsTimer?.cancel();
+    
+    // Safety: dispose controllers
     _pageController.dispose();
     _barAnimController.dispose();
     _pageTurnController.dispose();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    // Reset UI mode safely after the current frame to avoid blocking the transition
+    // especially important in "Run and Debug" mode to prevent platform channel deadlocks.
+    Future.delayed(Duration.zero, () {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    });
+    
     super.dispose();
   }
 
@@ -284,14 +315,15 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                               key: const ValueKey('mushaf_audio_player'),
                               pageNumber: _currentPage,
                               onAyahChanged: (surah, ayah) {
-                                setState(() {
-                                  _activeAyah = ayah;
-                                  _activeAyahCoordinates = _pageCoordinates
-                                      .where((c) =>
-                                          c.surahNumber == surah &&
-                                          c.ayahNumber == ayah)
-                                      .toList();
-                                });
+                                debugPrint('🔊 Ayah Changed: $surah:$ayah');
+                                if (mounted) {
+                                  setState(() {
+                                    _activeAyah = ayah;
+                                    _activeAyahCoordinates = _pageCoordinates
+                                        .where((c) => c.ayahNumber == ayah)
+                                        .toList();
+                                  });
+                                }
                               },
                               onMemorizationModeChanged: (isBlurring) {
                                 if (mounted) {
@@ -355,6 +387,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                         child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 30),
                       ),
                     ),
+                  ),
                 ],
               ),
             ),
@@ -527,10 +560,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                       _currentPage = page;
                                       _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
                                       _currentJuz = QuranPageHelper.getJuzForPage(page);
-                                      if (_showAudioPlayer) {
-                                        _showAudioPlayer = false;
-                                      }
+                                      // Removed: if (_showAudioPlayer) _showAudioPlayer = false; 
+                                      // Now audio will follow the page if it's already playing
                                     });
+                                    _loadPageData(page, isBackground: true);
                                     _recordPageVisit(page);
                                   },
                                   itemBuilder: (context, index) {
@@ -570,19 +603,16 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                             children: [
                                               // High-Contrast Contact Shadow on the static page
                                               Positioned.fill(
-                                                child: Opacity(
-                                                  opacity: (curlFactor * 0.5).clamp(0.0, 0.5),
-                                                  child: Container(
-                                                    margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
-                                                    decoration: const BoxDecoration(
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Colors.black,
-                                                          blurRadius: 40,
-                                                          offset: Offset(20, 0),
-                                                        ),
-                                                      ],
-                                                    ),
+                                                child: Container(
+                                                  margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
+                                                  decoration: BoxDecoration(
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black.withValues(alpha: (curlFactor * 0.5).clamp(0.0, 0.5)),
+                                                        blurRadius: 40,
+                                                        offset: const Offset(20, 0),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
                                               ),
@@ -599,10 +629,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                                             transform: Matrix4.rotationY(math.pi),
                                                             child: Container(
                                                               color: _parchmentDark, // Original Parchment Backhouse
-                                                              child: Opacity(
-                                                                opacity: 0.2,
-                                                                child: _buildPremiumPage(pageNumber + 1),
-                                                              ),
+                                                               child: ColorFiltered(
+                                                                 colorFilter: ColorFilter.mode(
+                                                                   Colors.black.withValues(alpha: 0.8),
+                                                                   BlendMode.srcOver,
+                                                                 ),
+                                                                 child: _buildPremiumPage(pageNumber + 1),
+                                                               ),
                                                             ),
                                                           )
                                                         : _buildPremiumPage(pageNumber),
@@ -762,17 +795,25 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     final juzNumber = QuranPageHelper.getJuzForPage(pageNumber);
 
     return Positioned(
-      top: 6,
-      left: 15,
-      right: 15,
+      top: 10,
+      left: 10,
+      right: 10,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Juz Number (Left)
-          _HeaderElement(text: 'الجزء $juzNumber'),
+          // Juz Info with Decoration
+          _OrnateHeader(
+            text: 'الجزء $juzNumber',
+            isLeft: true,
+            color: _richGold,
+          ),
           
-          // Surah Name (Right)
-          _HeaderElement(text: surahName),
+          // Surah Name with Decoration
+          _OrnateHeader(
+            text: surahName,
+            isLeft: false,
+            color: _richGold,
+          ),
         ],
       ),
     );
@@ -851,10 +892,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         builder: (context, child) {
           return Transform.translate(
             offset: Offset(0, -60 * (1 - _barSlideAnimation.value)),
-            child: Opacity(
-              opacity: _barSlideAnimation.value,
-              child: child,
-            ),
+            child: child, // Removed Opacity widget to fix Impeller errors
           );
         },
         child: Container(
@@ -893,7 +931,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               _PremiumIconButton(
                 icon: Icons.arrow_back_ios_new_rounded,
                 onPressed: () {
-                  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
                   Navigator.pop(context);
                 },
               ),
@@ -961,10 +998,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         builder: (context, child) {
           return Transform.translate(
             offset: Offset(0, 60 * (1 - _barSlideAnimation.value)),
-            child: Opacity(
-              opacity: _barSlideAnimation.value,
-              child: child,
-            ),
+            child: child, // Removed Opacity widget to fix Impeller errors
           );
         },
         child: Container(
@@ -1461,41 +1495,6 @@ class _OrnamentalFramePainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
-class _HeaderElement extends StatelessWidget {
-  final String text;
-  const _HeaderElement({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          text,
-          style: GoogleFonts.amiri(
-            color: const Color(0xFFB8860B),
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Container(
-          width: 40,
-          height: 0.8,
-          margin: const EdgeInsets.only(top: 2),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.transparent,
-                const Color(0xFFD4A947).withValues(alpha: 0.5),
-                Colors.transparent,
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _FooterOrnamentPainter extends CustomPainter {
   final Color color;
@@ -1530,9 +1529,120 @@ class _FooterOrnamentPainter extends CustomPainter {
       canvas.restore();
     }
     
+    // Outer intricate shell
+    final shellPaint = Paint()
+      ..color = color.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+      
+    for (int i = 0; i < 8; i++) {
+      final angle = (i * math.pi / 4);
+      final offset = Offset(math.cos(angle) * (r - 2), math.sin(angle) * (r - 2));
+      canvas.drawCircle(center + offset, 4, shellPaint);
+    }
+    
     // Inner circles
-    canvas.drawCircle(center, r - 5, paint..strokeWidth = 0.4);
-    canvas.drawCircle(center, r - 8, paint..strokeWidth = 0.2);
+    canvas.drawCircle(center, r - 5, paint..strokeWidth = 0.6);
+    canvas.drawCircle(center, r - 8, paint..strokeWidth = 0.3);
+    
+    // Core dots
+    for (int i = 0; i < 4; i++) {
+       final angle = (i * math.pi / 2);
+       final dotOffset = Offset(math.cos(angle) * 11, math.sin(angle) * 11);
+       canvas.drawCircle(center + dotOffset, 1, paint..style = PaintingStyle.fill);
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+/// Ornate Header Widget for Surah/Juz info
+class _OrnateHeader extends StatelessWidget {
+  final String text;
+  final bool isLeft;
+  final Color color;
+
+  const _OrnateHeader({
+    required this.text,
+    required this.isLeft,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isLeft) _HeaderOrnament(color: color, flip: true),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: GoogleFonts.amiri(
+              color: color.withValues(alpha: 0.9),
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  offset: const Offset(0, 1),
+                  blurRadius: 2,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (isLeft) _HeaderOrnament(color: color, flip: false),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderOrnament extends StatelessWidget {
+  final Color color;
+  final bool flip;
+  const _HeaderOrnament({required this.color, required this.flip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.scale(
+      scaleX: flip ? -1 : 1,
+      child: CustomPaint(
+        size: const Size(24, 12),
+        painter: _HeaderOrnamentPainter(color: color),
+      ),
+    );
+  }
+}
+
+class _HeaderOrnamentPainter extends CustomPainter {
+  final Color color;
+  _HeaderOrnamentPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    final path = Path();
+    // Intricate Islamic curve
+    path.moveTo(0, size.height / 2);
+    path.quadraticBezierTo(size.width * 0.4, 0, size.width * 0.8, size.height / 2);
+    path.quadraticBezierTo(size.width * 0.9, size.height * 0.7, size.width, size.height / 2);
+    path.moveTo(size.width * 0.2, size.height / 2);
+    path.lineTo(size.width * 0.6, size.height / 2);
+    
+    canvas.drawPath(path, paint);
+    canvas.drawCircle(Offset(size.width * 0.85, size.height / 2), 1.5, paint..style = PaintingStyle.fill);
   }
 
   @override

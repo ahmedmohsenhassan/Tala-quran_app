@@ -7,6 +7,7 @@ import '../services/translation_service.dart';
 import '../services/tafseer_service.dart';
 import '../utils/app_colors.dart';
 import '../main.dart'; // للوصول لـ fontSizeNotifier
+import '../services/theme_service.dart';
 
 /// شاشة القراءة النصية (Text Reading Screen)
 /// Displays the actual Arabic text of the Surah
@@ -214,62 +215,79 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: AppColors.cream,
-        extendBodyBehindAppBar: true,
-        appBar: _buildGlassAppBar(),
-        body: FutureBuilder<Map<String, dynamic>>(
-          future: _surahData,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                  child: CircularProgressIndicator(color: AppColors.gold));
-            }
+      child: ValueListenableBuilder<String>(
+        valueListenable: fontNotifier,
+        builder: (context, currentFont, _) {
+          String fontFamily = currentFont;
+          if (currentFont == ThemeService.fontNaskh) {
+            fontFamily = 'Noto Naskh Arabic';
+          }
 
-            if (snapshot.hasError || !snapshot.hasData) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline,
-                        color: Colors.red, size: 48),
-                    const SizedBox(height: 16),
-                    Text('خطأ في تحميل البيانات: ${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.red)),
-                  ],
+          return ValueListenableBuilder<double>(
+            valueListenable: fontSizeNotifier,
+            builder: (context, multiplier, _) {
+              return Scaffold(
+                backgroundColor: AppColors.bg(context),
+                extendBodyBehindAppBar: true,
+                appBar: _buildGlassAppBar(),
+                body: FutureBuilder<Map<String, dynamic>>(
+                  future: _surahData,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                          child: CircularProgressIndicator(
+                              color: AppColors.gold));
+                    }
+
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                color: Colors.red, size: 48),
+                            const SizedBox(height: 16),
+                            Text('خطأ في تحميل البيانات: ${snapshot.error}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final data = snapshot.data!;
+                    final List ayahs = data['ayahs'] ?? [];
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 120, 24, 40),
+                      child: Column(
+                        children: [
+                          if (widget.surahNumber != 1 && widget.surahNumber != 9)
+                            _buildBasmalah(fontFamily),
+                          const SizedBox(height: 20),
+                          _buildMushafText(ayahs, fontFamily, multiplier),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               );
-            }
-
-            final data = snapshot.data!;
-            final List ayahs = data['ayahs'] ?? [];
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 120, 24, 40),
-              child: Column(
-                children: [
-                  if (widget.surahNumber != 1 && widget.surahNumber != 9)
-                    _buildBasmalah(),
-                  const SizedBox(height: 20),
-                  _buildMushafText(ayahs),
-                ],
-              ),
-            );
-          },
-        ),
+            },
+          );
+        },
       ),
     );
   }
 
-  Widget _buildBasmalah() {
+  Widget _buildBasmalah(String fontFamily) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 30),
       child: Text(
         "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
         textAlign: TextAlign.center,
-        style: GoogleFonts.amiri(
-          color: AppColors.emerald,
+        style: TextStyle(
+          fontFamily: fontFamily,
+          color: AppColors.gold,
           fontSize: 32,
           fontWeight: FontWeight.bold,
         ),
@@ -277,7 +295,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
     );
   }
 
-  Widget _buildMushafText(List ayahs) {
+  Widget _buildMushafText(List ayahs, String fontFamily, double multiplier) {
     return RichText(
       textAlign: TextAlign.center,
       textDirection: TextDirection.rtl,
@@ -288,9 +306,10 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
             children: [
               TextSpan(
                 text: ayah['text'] + " ",
-                style: GoogleFonts.amiri(
-                  color: AppColors.emerald,
-                  fontSize: 26,
+                style: TextStyle(
+                  fontFamily: fontFamily,
+                  color: AppColors.text(context),
+                  fontSize: 26 * multiplier,
                   height: 2.2,
                   fontWeight: FontWeight.w500,
                 ),
@@ -346,7 +365,7 @@ class _SurahDetailScreenState extends State<SurahDetailScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: AppBar(
-            backgroundColor: AppColors.emerald.withValues(alpha: 0.8),
+            backgroundColor: AppColors.bg(context).withValues(alpha: 0.8),
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded,

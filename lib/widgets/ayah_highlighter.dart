@@ -49,8 +49,13 @@ class _HighlightPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.amber.withValues(alpha: 0.4)
+      ..color = const Color(0xFFFFD700).withValues(alpha: 0.35) // Vibrant Gold
       ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFFFFD700).withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
 
     for (var coord in coordinates) {
       final rect = Rect.fromLTRB(
@@ -60,6 +65,7 @@ class _HighlightPainter extends CustomPainter {
         coord.maxY * scaleY,
       );
       canvas.drawRect(rect, paint);
+      canvas.drawRect(rect, borderPaint);
     }
   }
 

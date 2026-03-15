@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../data/surahs.dart';
+import '../data/surah_metadata.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
@@ -27,13 +27,13 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    _filteredSurahs = List.from(surahs);
+    _filteredSurahs = List.from(surahMetadata);
   }
 
   void _onSearch(String query) async {
     if (query.isEmpty) {
       setState(() {
-        _filteredSurahs = List.from(surahs);
+        _filteredSurahs = List.from(surahMetadata);
         _ayahResults = [];
         _isLoading = false;
       });
@@ -42,9 +42,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
     if (!_isAyahSearch) {
       setState(() {
-        _filteredSurahs = surahs.where((surah) {
+        _filteredSurahs = surahMetadata.where((surah) {
           final name = surah['name'].toString().toLowerCase();
-          final englishName = surah['english_name'].toString().toLowerCase();
+          final englishName = surah['englishName'].toString().toLowerCase();
           final number = surah['number'].toString();
           final q = query.toLowerCase();
           return name.contains(q) || englishName.contains(q) || number == q;
@@ -217,11 +217,16 @@ class _SearchScreenState extends State<SearchScreen> {
             itemCount: _filteredSurahs.length,
             itemBuilder: (context, index) {
               final surah = _filteredSurahs[index];
-              return SurahCard(
-                number: surah['number'],
-                name: surah['name'],
-                englishName: surah['english_name'],
-                onTap: () => _showReadModeDialog(context, surah),
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SurahCard(
+                  number: surah['number'],
+                  name: surah['name'],
+                  revelationType: surah['revelationType'],
+                  totalAyahs: surah['totalAyahs'],
+                  pageNumber: surah['pageNumber'],
+                  onTap: () => _showReadModeDialog(context, surah),
+                ),
               );
             },
           );
@@ -263,7 +268,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     final surahNum = int.parse(ayah['surahNumber']);
                     String surahName = "سورة $surahNum";
                     try {
-                      final surahData = surahs.firstWhere((s) => s['number'] == surahNum);
+                      final surahData = surahMetadata.firstWhere((s) => s['number'] == surahNum);
                       surahName = surahData['name'] ?? surahName;
                     } catch (_) {}
 
