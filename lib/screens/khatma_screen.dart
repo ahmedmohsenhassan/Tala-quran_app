@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/khatma_service.dart';
-import '../utils/app_colors.dart';
+import '../utils/app_colors.dart'; // Corrected import
+import 'reading_plan_screen.dart'; // Added import for ReadingPlanScreen
 
 /// شاشة تتبع الختمة — Khatma Tracker Screen
 class KhatmaScreen extends StatefulWidget {
@@ -23,11 +24,12 @@ class _KhatmaScreenState extends State<KhatmaScreen> {
   }
 
   Future<void> _loadData() async {
-    final active = await KhatmaService.getActiveKhatma();
+    final plans = await KhatmaService.getAllPlans();
+    final active = plans.isNotEmpty ? plans.first : null; // Get first active plan as preview
     final count = await KhatmaService.getCompletedCount();
     if (mounted) {
       setState(() {
-        _activeKhatma = active;
+        _activeKhatma = active?.toJson(); // Convert for legacy UI compatibility
         _completedCount = count;
         _isLoading = false;
       });
@@ -128,10 +130,12 @@ class _KhatmaScreenState extends State<KhatmaScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
-                      await KhatmaService.createKhatma(
-                          targetDays: selectedDays);
-                      if (context.mounted) Navigator.pop(context);
-                      _loadData();
+                      // Navigate to new creation screen
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const ReadingPlanScreen()),
+                      );
+                      if (result == true) _loadData();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.gold,

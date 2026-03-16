@@ -1,98 +1,106 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/reading_plan.dart';
 
-/// خدمة تتبع الختمة — Khatma (Quran Completion) Tracker Service
+/// خدمة تتبع الختمة والخطط — Reading Plans & Khatma Service
 class KhatmaService {
-  static const String _activeKhatmaKey = 'khatma_active';
+  static const String _plansKey = 'reading_plans_list';
   static const String _completedCountKey = 'khatma_completed_count';
   static const String _historyKey = 'khatma_history';
 
   static const int totalPages = 604;
 
-  /// إنشاء ختمة جديدة — Create a new Khatma
-  static Future<void> createKhatma({required int targetDays}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final khatma = {
-      'startDate': DateTime.now().toIso8601String(),
-      'targetDays': targetDays,
-      'pagesRead': 0,
-      'dailyTarget': (totalPages / targetDays).ceil(),
-    };
-    await prefs.setString(_activeKhatmaKey, jsonEncode(khatma));
+  /// إنشاء خطة جديدة — Create a new Reading Plan
+  static Future<void> createPlan(ReadingPlan plan) async {
+    final plans = await getAllPlans();
+    plans.add(plan);
+    await _savePlans(plans);
   }
 
-  /// تحديث تقدم الختمة — Update Khatma progress
-  static Future<void> recordPage({int pages = 1}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final khatmaStr = prefs.getString(_activeKhatmaKey);
-    if (khatmaStr == null) return;
+  /// تحديث تقدم جميع الخطط — Update progress for all active plans
+  static Future<void> recordPageProgress(int pageNumber) async {
+    final plans = await getAllPlans();
+    bool changed = false;
 
-    final khatma = jsonDecode(khatmaStr) as Map<String, dynamic>;
-    khatma['pagesRead'] = (khatma['pagesRead'] as int) + pages;
+    for (var plan in plans) {
+      if (plan.isActive && pageNumber >= plan.startPage && pageNumber <= plan.endPage) {
+        // Here we ideally want to track which specific pages are read, 
+        // but for now we'll increment if it's within range and not already recorded 
+        // (This is a simplified logic, a more robust one would use a bitmask or set of read pages)
+        plan.pagesRead++; 
+        changed = true;
 
-    // التحقق من إتمام الختمة — Check if completed
-    if (khatma['pagesRead'] >= totalPages) {
-      await _completeKhatma(prefs, khatma);
-    } else {
-      await prefs.setString(_activeKhatmaKey, jsonEncode(khatma));
+        if (plan.isCompleted) {
+          await _archivePlan(plan);
+        }
+      }
+    }
+
+    if (changed) {
+      await _savePlans(plans.where((p) => p.isActive).toList());
     }
   }
 
-  /// إتمام الختمة — Complete the Khatma
-  static Future<void> _completeKhatma(
-      SharedPreferences prefs, Map<String, dynamic> khatma) async {
-    // زيادة العداد — Increment counter
-    int completedCount = prefs.getInt(_completedCountKey) ?? 0;
-    completedCount++;
-    await prefs.setInt(_completedCountKey, completedCount);
-
-    // حفظ في التاريخ — Save to history
-    final historyStr = prefs.getString(_historyKey);
-    List<Map<String, dynamic>> history = [];
-    if (historyStr != null) {
-      history = (jsonDecode(historyStr) as List)
-          .map((e) => e as Map<String, dynamic>)
-          .toList();
+  /// أرشفة خطة مكتملة — Archive a completed plan
+  static Future<void> _archivePlan(ReadingPlan plan) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // زيادة عدد الختمات إذا كانت كاملة
+    if (plan.type == ReadingPlanType.fullQuran) {
+      int count = prefs.getInt(_completedCountKey) ?? 0;
+      await prefs.setInt(_completedCountKey, count + 1);
     }
+
+    // حفظ في التاريخ
+    final history = await getHistory();
     history.add({
-      'startDate': khatma['startDate'],
+      'id': plan.id,
+      'title': plan.title,
+      'startDate': plan.startDate.toIso8601String(),
       'endDate': DateTime.now().toIso8601String(),
-      'targetDays': khatma['targetDays'],
-      'number': completedCount,
+      'type': plan.type.index,
+      'pagesRead': plan.pagesRead,
     });
     await prefs.setString(_historyKey, jsonEncode(history));
-
-    // حذف الختمة النشطة — Remove active Khatma
-    await prefs.remove(_activeKhatmaKey);
   }
 
-  /// الحصول على بيانات الختمة النشطة — Get active Khatma data
-  static Future<Map<String, dynamic>?> getActiveKhatma() async {
+  /// الحصول على كل الخطط النشطة — Get all active plans
+  static Future<List<ReadingPlan>> getAllPlans() async {
     final prefs = await SharedPreferences.getInstance();
-    final khatmaStr = prefs.getString(_activeKhatmaKey);
-    if (khatmaStr == null) return null;
+    final plansStr = prefs.getString(_plansKey);
+    if (plansStr == null) return [];
 
-    final khatma = jsonDecode(khatmaStr) as Map<String, dynamic>;
-    final startDate = DateTime.parse(khatma['startDate']);
-    final daysPassed = DateTime.now().difference(startDate).inDays;
-    final int pagesRead = khatma['pagesRead'];
-    final int dailyTarget = khatma['dailyTarget'];
-    final int targetDays = khatma['targetDays'];
-    final double progress = pagesRead / totalPages;
+    final List<dynamic> jsonList = jsonDecode(plansStr);
+    return jsonList.map((j) => ReadingPlan.fromJson(j)).toList();
+  }
 
-    // الصفحات المتبقية لليوم — Remaining pages for today
-    final idealPagesForToday = (daysPassed + 1) * dailyTarget;
-    final pagesNeededToday =
-        (idealPagesForToday - pagesRead).clamp(0, totalPages - pagesRead);
+  /// حفظ الخطط — Save plans
+  static Future<void> _savePlans(List<ReadingPlan> plans) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = plans.map((p) => p.toJson()).toList();
+    await prefs.setString(_plansKey, jsonEncode(jsonList));
+  }
+
+  /// حذف خطة — Delete a plan
+  static Future<void> deletePlan(String id) async {
+    final plans = await getAllPlans();
+    plans.removeWhere((p) => p.id == id);
+    await _savePlans(plans);
+  }
+
+  /// الحصول على إحصائيات سريعة — Get quick stats
+  static Future<Map<String, dynamic>> getStats() async {
+    final prefs = await SharedPreferences.getInstance();
+    final plans = await getAllPlans();
+    
+    int totalPagesRead = 0; // This should ideally come from a reading_stats_service
+    int activePlansCount = plans.length;
+    int completedKhatmas = prefs.getInt(_completedCountKey) ?? 0;
 
     return {
-      ...khatma,
-      'daysPassed': daysPassed,
-      'progress': progress,
-      'pagesRemaining': totalPages - pagesRead,
-      'pagesNeededToday': pagesNeededToday,
-      'daysRemaining': (targetDays - daysPassed).clamp(0, targetDays),
-      'isOnTrack': pagesRead >= (daysPassed * dailyTarget),
+      'activePlans': activePlansCount,
+      'completedKhatmas': completedKhatmas,
+      'totalPagesRead': totalPagesRead,
     };
   }
 
@@ -107,8 +115,7 @@ class KhatmaService {
     final prefs = await SharedPreferences.getInstance();
     final historyStr = prefs.getString(_historyKey);
     if (historyStr == null) return [];
-    return (jsonDecode(historyStr) as List)
-        .map((e) => e as Map<String, dynamic>)
-        .toList();
+    final List<dynamic> jsonList = jsonDecode(historyStr);
+    return jsonList.cast<Map<String, dynamic>>();
   }
 }

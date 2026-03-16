@@ -8,7 +8,6 @@ import '../services/bookmark_service.dart';
 import '../services/reading_service.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'mushaf_viewer_screen.dart';
 
 // ============================================================
 //  Premium Colors for Splash
@@ -46,11 +45,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _coverOpenController;
   late Animation<double> _coverOpen;
 
-  // Phase 4: Pages flip
-  late AnimationController _pageFlipController;
-  late Animation<double> _pageFlip;
-
-  // Phase 5: Zoom into page (transition to app)
+  // Phase 4: Zoom into page (transition to app)
   late AnimationController _zoomInController;
   late Animation<double> _zoomIn;
 
@@ -87,13 +82,7 @@ class _SplashScreenState extends State<SplashScreen>
     _coverOpen = Tween<double>(begin: 0.0, end: 1.0).animate(
         CurvedAnimation(parent: _coverOpenController, curve: Curves.easeInOutQuart));
 
-    // Phase 4: Page flips (1.5s)
-    _pageFlipController = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1500));
-    _pageFlip = CurvedAnimation(
-        parent: _pageFlipController, curve: Curves.easeInOut);
-
-    // Phase 5: Zoom into page (1s)
+    // Phase 4: Zoom into page (1s)
     _zoomInController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1000));
     _zoomIn = Tween<double>(begin: 1.0, end: 3.0).animate(
@@ -149,39 +138,24 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 2800));
     if (!mounted) return;
 
-    // === Phase 4: Pages flip ===
+    // === Phase 4: Zoom into page & navigate ===
     setState(() => _phase = 3);
-    _pageFlipController.forward();
-    await Future.delayed(const Duration(milliseconds: 1800));
-    if (!mounted) return;
-
-    // === Phase 5: Zoom into page & navigate ===
-    setState(() => _phase = 4);
     _zoomInController.forward();
     await Future.delayed(const Duration(milliseconds: 1000));
 
     if (mounted) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       
-      if (_lastReadPage > 1) {
-        // First, set the Dashboard as the new root
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
-        );
-        // Then push Mushaf on top of it
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => MushafViewerScreen(initialPage: _lastReadPage),
+      // تبسيط عملية التنقل لضمان استقرار الـ Hero Transitions
+      // Simplify navigation to ensure stable Hero Transitions
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MainDashboardScreen(
+            autoOpenPage: _lastReadPage,
           ),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
-        );
-      }
+        ),
+      );
     }
   }
 
@@ -190,7 +164,6 @@ class _SplashScreenState extends State<SplashScreen>
     _logoController.dispose();
     _bookZoomController.dispose();
     _coverOpenController.dispose();
-    _pageFlipController.dispose();
     _zoomInController.dispose();
     _shimmerController.dispose();
     super.dispose();
@@ -215,7 +188,6 @@ class _SplashScreenState extends State<SplashScreen>
                 _logoController,
                 _bookZoomController,
                 _coverOpenController,
-                _pageFlipController,
                 _zoomInController,
               ]),
               builder: (context, _) {
@@ -234,11 +206,11 @@ class _SplashScreenState extends State<SplashScreen>
                     // Book Phase
                     if (_phase >= 1)
                       Transform.scale(
-                        scale: _phase < 4
+                        scale: _phase < 3
                             ? (_bookZoom.value * 0.4 + 0.6) // 0.6 → 1.0
                             : _zoomIn.value, // 1.0 → 3.0
                         child: Opacity(
-                          opacity: _phase < 4
+                          opacity: _phase < 3
                               ? _bookZoom.value
                               : (1.0 - (_zoomIn.value - 1.0)).clamp(0.0, 1.0),
                           child: _buildBook(size),
@@ -254,7 +226,7 @@ class _SplashScreenState extends State<SplashScreen>
           _buildBottomBranding(),
 
           // Gold particles during book open
-          if (_phase >= 2 && _phase < 4)
+          if (_phase >= 2 && _phase < 3)
             AnimatedBuilder(
               animation: _shimmerController,
               builder: (context, _) =>
@@ -350,7 +322,6 @@ class _SplashScreenState extends State<SplashScreen>
     final bookWidth = screenSize.width * 0.88;
     final bookHeight = bookWidth * 1.42;
     final coverProgress = _coverOpen.value;
-    final flipProgress = _pageFlip.value;
 
     return SizedBox(
       width: bookWidth + 16, // extra for spine
@@ -381,10 +352,6 @@ class _SplashScreenState extends State<SplashScreen>
               dirPath: _mushafDirPath,
             ),
           ),
-
-          // === Flipping pages ===
-          if (_phase >= 3)
-            ..._buildFlippingPages(flipProgress, bookWidth, bookHeight),
 
           // === Front cover (opens with 3D rotation) ===
           Positioned(
@@ -430,95 +397,6 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  List<Widget> _buildFlippingPages(
-      double progress, double width, double height) {
-    const pageCount = 3;
-    return List.generate(pageCount, (i) {
-      final delay = i * 0.15;
-      final pageProgress = ((progress - delay) / 0.7).clamp(0.0, 1.0);
-      if (pageProgress <= 0 || pageProgress >= 1.0) {
-        return const SizedBox.shrink();
-      }
-
-      return Positioned(
-        left: 16,
-        child: Transform(
-          alignment: Alignment.centerRight,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.0008)
-            ..rotateY(-(pageProgress * pi * 0.85)),
-          child: Opacity(
-            opacity: (1.0 - pageProgress * 1.5).clamp(0.0, 1.0),
-            child: Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                color: _kParchment,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: _kDarkGold.withValues(alpha: 0.2),
-                  width: 0.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(3, 2),
-                  ),
-                ],
-              ),
-              child: _buildInnerPage(i),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-
-  Widget _buildInnerPage(int index) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: _kDarkGold.withValues(alpha: 0.12),
-          width: 0.5,
-        ),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.amiri(
-                  color: _kCoverDark.withValues(alpha: 0.7),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              for (int i = 0; i < 8; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Container(
-                    height: 1.5,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: _kCoverDark.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }

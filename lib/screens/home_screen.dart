@@ -12,7 +12,9 @@ import '../services/notification_service.dart';
 import 'mushaf_viewer_screen.dart';
 import 'surah_detail_screen.dart';
 import 'search_screen.dart';
+import 'reading_plan_screen.dart';
 import '../services/kids_mode_service.dart';
+import '../data/rub_data.dart';
 import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -206,8 +208,138 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildJuzTab() {
-    return const Center(
-        child: Text('قريباً...', style: TextStyle(color: Colors.white)));
+    final List<QuranQuarter> quarters = RubData.quarters;
+    
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      physics: const BouncingScrollPhysics(),
+      itemCount: quarters.length,
+      itemBuilder: (context, index) {
+        final quarter = quarters[index];
+        final bool showHeader = index == 0 || quarters[index-1].juz != quarter.juz;
+
+        return Column(
+          children: [
+            if (showHeader) _buildSectionHeader('جزء ${quarter.juz}'),
+            _buildRubCard(quarter),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16, top: 12),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.amiri(
+              color: AppColors.textMuted,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Divider(color: AppColors.gold.withValues(alpha: 0.1))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRubCard(QuranQuarter rub) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MushafViewerScreen(initialPage: rub.page),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.cardBackground.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.03)),
+          ),
+          child: Row(
+            children: [
+              // رقم الربع (1/4، 1/2، 3/4، أو الحزب)
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.gold.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+                ),
+                child: Center(
+                  child: Text(
+                    rub.fractionText,
+                    style: GoogleFonts.outfit(
+                      color: AppColors.gold,
+                      fontSize: rub.quarterInHizb == 4 ? 18 : 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // التفاصيل
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      rub.text.length > 45 ? '${rub.text.substring(0, 42)}...' : rub.text,
+                      style: GoogleFonts.amiri(
+                        color: Colors.white,
+                        fontSize: 16,
+                        height: 1.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          rub.surahName,
+                          style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 13),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(width: 4, height: 4, decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'آية ${rub.ayahNumber}',
+                          style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // رقم الصفحة
+              Text(
+                '${rub.page}',
+                style: GoogleFonts.outfit(
+                  color: AppColors.textMuted.withValues(alpha: 0.6),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildFavoritesTab() {
@@ -234,31 +366,37 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildKhatmaCard() {
-    return Container(
-      width: 180,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.emerald.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.emerald.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.check_circle_outline_rounded,
-                  color: AppColors.emerald, size: 20),
-              const SizedBox(width: 8),
-              Text('ختم القرآن',
-                  style: GoogleFonts.amiri(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text('ابدأ خطة قراءة جديدة',
-              style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 12)),
-        ],
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ReadingPlanScreen()),
+      ).then((_) => _loadData()),
+      child: Container(
+        width: 180,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.emerald.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.emerald.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle_outline_rounded,
+                    color: AppColors.emerald, size: 20),
+                const SizedBox(width: 8),
+                Text('خطط القراءة',
+                    style: GoogleFonts.amiri(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('نظّم ختمتك وقراءتك',
+                style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
