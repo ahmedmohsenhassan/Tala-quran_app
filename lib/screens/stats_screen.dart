@@ -43,35 +43,33 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
         backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.background,
-          elevation: 0,
-          title: Text(
-            'إحصائياتي',
-            style: GoogleFonts.amiri(
-              color: AppColors.gold,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+        elevation: 0,
+        title: Text(
+          'الإحصائيات الذكية',
+          style: GoogleFonts.amiri(
+            color: AppColors.gold,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
           ),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon:
-                  const Icon(Icons.auto_stories_rounded, color: AppColors.gold),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const KhatmaScreen()),
-                );
-              },
-            ),
-          ],
         ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon:
+                const Icon(Icons.auto_stories_rounded, color: AppColors.gold),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const KhatmaScreen()),
+              );
+            },
+          ),
+        ],
+      ),
         body: _isLoading
             ? const Center(
                 child: CircularProgressIndicator(color: AppColors.gold))
@@ -80,29 +78,116 @@ class _StatsScreenState extends State<StatsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // الإحصائيات السريعة — Quick stats grid
-                    _buildQuickStats(),
+                    // الوعاء العلوي - ملخص ذكي
+                    _buildSmartSummaryHeader(),
                     const SizedBox(height: 24),
 
+                    // الإحصائيات السريعة — Quick stats grid
+                    _buildQuickStats(),
+                    const SizedBox(height: 32),
+
                     // رسم الأسبوع — Weekly chart
-                    Text(
-                      'نشاط الأسبوع',
-                      style: GoogleFonts.amiri(
-                        color: AppColors.gold,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.show_chart_rounded, color: AppColors.gold, size: 24),
+                        const SizedBox(width: 12),
+                        Text(
+                          'نشاط الأسبوع الذكي',
+                          style: GoogleFonts.amiri(
+                            color: AppColors.gold,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     _buildWeekChart(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
 
                     // هدف اليوم — Today's goal
                     _buildTodayGoal(),
                     const SizedBox(height: 80),
                   ],
                 ),
+      ),
+    );
+  }
+
+  Widget _buildSmartSummaryHeader() {
+    final s = _stats!;
+    final totalProgress = (s['totalPages'] / 604).clamp(0.0, 1.0);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.emerald,
+            AppColors.emerald.withValues(alpha: 0.8),
+            AppColors.gold.withValues(alpha: 0.2),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.emerald.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'إجمالي الختمة',
+                    style: GoogleFonts.amiri(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    '${(totalProgress * 100).toStringAsFixed(1)}%',
+                    style: GoogleFonts.outfit(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
+              const Icon(Icons.auto_awesome_rounded, color: AppColors.gold, size: 40),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: totalProgress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'لقد قرأت ${s['totalPages']} من أصل 604 صفحة',
+            style: GoogleFonts.amiri(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 13,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -81,7 +81,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                 _buildNavItem(1, Icons.grid_view_rounded, 'الفهرس'),
                 _buildNavItem(2, Icons.library_books_rounded, 'الأجزاء'),
                 _buildNavItem(3, Icons.mic_none_rounded, 'التلاوات'),
-                _buildNavItem(4, Icons.bar_chart_rounded, 'إحصائيات'),
+                _buildNavItem(4, Icons.bar_chart_rounded, 'الإحصائيات الذكية'),
                 _buildNavItem(5, Icons.bookmark_outline_rounded, 'المحفوظات'),
               ],
             ),

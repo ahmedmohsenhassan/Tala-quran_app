@@ -6,7 +6,6 @@ import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
 import '../services/quran_text_service.dart';
 import 'mushaf_viewer_screen.dart';
-import 'surah_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -225,7 +224,16 @@ class _SearchScreenState extends State<SearchScreen> {
                   revelationType: surah['revelationType'],
                   totalAyahs: surah['totalAyahs'],
                   pageNumber: surah['pageNumber'],
-                  onTap: () => _showReadModeDialog(context, surah),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MushafViewerScreen(
+                          initialPage: QuranPageHelper.getPageForSurah(surah['number']),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             },
@@ -264,21 +272,12 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                   ),
                   onTap: () {
-                    // العثور على اسم السورة من القائمة المعرفة مسبقاً
                     final surahNum = int.parse(ayah['surahNumber']);
-                    String surahName = "سورة $surahNum";
-                    try {
-                      final surahData = surahMetadata.firstWhere((s) => s['number'] == surahNum);
-                      surahName = surahData['name'] ?? surahName;
-                    } catch (_) {}
-
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => SurahDetailScreen(
-                          surahNumber: surahNum,
-                          surahName: surahName,
-                          highlightedAyah: int.parse(ayah['verseNumber']),
+                        builder: (_) => MushafViewerScreen(
+                          initialPage: QuranPageHelper.getPageForSurah(surahNum),
                         ),
                       ),
                     );
@@ -295,62 +294,6 @@ class _SearchScreenState extends State<SearchScreen> {
         'لا توجد نتائج',
         style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 18),
       ),
-    );
-  }
-
-  void _showReadModeDialog(BuildContext context, Map<String, dynamic> surah) {
-    showDialog(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          backgroundColor: AppColors.cardBackground,
-          title: Text(
-            'اختر طريقة القراءة',
-            style: GoogleFonts.amiri(
-                color: AppColors.gold, fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDialogOption(Icons.menu_book, 'قراءة من المصحف',
-                  'عرض صفحات مصورة (تحتاج تحميل)', () {
-                Navigator.pop(context);
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => MushafViewerScreen(
-                              initialPage: QuranPageHelper.getPageForSurah(
-                                  surah['number']),
-                            )));
-              }),
-              const Divider(color: Colors.white10),
-              _buildDialogOption(Icons.text_format, 'قراءة نصية',
-                  'عرض آيات مكتوبة (تعمل دائماً)', () {
-                Navigator.pop(context);
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => SurahDetailScreen(
-                              surahNumber: surah['number'],
-                              surahName: surah['name'],
-                            )));
-              }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDialogOption(
-      IconData icon, String title, String sub, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.gold),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      subtitle: Text(sub,
-          style: const TextStyle(color: Colors.white70, fontSize: 12)),
-      onTap: onTap,
     );
   }
 }

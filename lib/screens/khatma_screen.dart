@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/khatma_service.dart';
+import '../models/reading_plan.dart';
 import '../utils/app_colors.dart'; // Corrected import
 import 'reading_plan_screen.dart'; // Added import for ReadingPlanScreen
 
@@ -13,7 +14,7 @@ class KhatmaScreen extends StatefulWidget {
 }
 
 class _KhatmaScreenState extends State<KhatmaScreen> {
-  Map<String, dynamic>? _activeKhatma;
+  ReadingPlan? _activeKhatma;
   int _completedCount = 0;
   bool _isLoading = true;
 
@@ -29,7 +30,7 @@ class _KhatmaScreenState extends State<KhatmaScreen> {
     final count = await KhatmaService.getCompletedCount();
     if (mounted) {
       setState(() {
-        _activeKhatma = active?.toJson(); // Convert for legacy UI compatibility
+        _activeKhatma = active;
         _completedCount = count;
         _isLoading = false;
       });
@@ -285,12 +286,12 @@ class _KhatmaScreenState extends State<KhatmaScreen> {
 
   Widget _buildActiveKhatmaCard() {
     final k = _activeKhatma!;
-    final double progress = k['progress'];
-    final int pagesRead = k['pagesRead'];
-    final int pagesRemaining = k['pagesRemaining'];
-    final int dailyTarget = k['dailyTarget'];
-    final int daysRemaining = k['daysRemaining'];
-    final bool isOnTrack = k['isOnTrack'];
+    final double progress = k.progress;
+    final int pagesRead = k.pagesRead;
+    final int pagesRemaining = k.remainingPages;
+    final int dailyTarget = k.dailyTarget;
+    final int daysRemaining = k.totalTargetDays - k.daysPassed;
+    final bool isOnTrack = k.isOnTrack;
 
     return Container(
       padding: const EdgeInsets.all(24),

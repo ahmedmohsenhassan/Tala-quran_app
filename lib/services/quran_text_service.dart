@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'tafseer_service.dart';
@@ -155,6 +156,50 @@ class QuranTextService {
           ]
         };
       }
+    }
+  }
+
+  /// جلب آيات صفحة معينة مع بيانات الكلمات والأسطر (للدقة القصوى)
+  /// Fetch verses for a specific page with word-level data and line numbers
+  Future<List<Map<String, dynamic>>> getVersesByPage(int pageNumber) async {
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/quran/verses/uthmani',
+        queryParameters: {
+          'page_number': pageNumber,
+          'fields': 'text_uthmani,verse_key,line_number,page_number',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(response.data['verses']);
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching page verses: $e");
+      return [];
+    }
+  }
+
+  /// جلب بيانات الكلمات لصفحة معينة (للتظليل كلمة بكلمة)
+  /// Fetch word-level data for a specific page (for Word-by-Word highlighting)
+  Future<List<Map<String, dynamic>>> getPageWords(int pageNumber) async {
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/verses/by_page/$pageNumber',
+        queryParameters: {
+          'words': 'true',
+          'word_fields': 'text_uthmani,line_number,location',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(response.data['verses']);
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching page words: $e");
+      return [];
     }
   }
 

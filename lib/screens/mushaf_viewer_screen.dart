@@ -1,13 +1,10 @@
 import 'dart:math' as math;
-import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/mushaf_audio_player.dart';
 import '../widgets/ai_tajweed_sheet.dart';
@@ -18,7 +15,6 @@ import '../services/khatma_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/ayah_sync_service.dart';
-import '../services/reading_service.dart';
 import '../models/ayah_coordinate.dart';
 import '../widgets/ayah_highlighter.dart';
 import 'tafseer_screen.dart';
@@ -26,6 +22,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 import '../services/theme_service.dart';
+import '../widgets/mushaf_page_renderer.dart';
 
 // ============================================================
 //  PREMIUM COLORS & THEME HELPERS
@@ -89,9 +86,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   late PageController _pageController;
   int _currentPage = 1;
   bool _showAudioPlayer = false;
-  String? _mushafDirPath;
-  String _currentReading = ReadingService.hafs;
-  bool _isDownloaded = false;
   bool _showBars = true;
   bool _isLoading = true;
   String _currentSurahName = '';
@@ -108,7 +102,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   bool _isSanctuaryMode = false;
   
   // Optimization
-  bool _pageFileExists = false;
   int _lastLoadId = 0; // Race condition protection
   Timer? _statsTimer;
 
@@ -153,38 +146,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _loadTheme();
   }
 
-  void _handleAyahTap(Offset localPos, double width, double height) {
-    if (_pageCoordinates.isEmpty) return;
-
-    // Map screen tap to original coordinate system (1024 width base)
-    final double scaleX = 1024 / width;
-    final double scaleY = 1400 / height; // Assuming standard 1400 height for Medina Mushaf relative to 1024
+  void _handleAyahTap(int surah, int ayah) {
+    debugPrint('🎯 Tapped Ayah via Dynamic Renderer: $ayah');
     
-    final double tappedX = localPos.dx * scaleX;
-    final double tappedY = (localPos.dy - 30) * scaleY; // Adjusted for padding in _buildPremiumPage
-
-    for (var coord in _pageCoordinates) {
-      if (tappedX >= coord.minX && tappedX <= coord.maxX &&
-          tappedY >= coord.minY && tappedY <= coord.maxY) {
-        
-        debugPrint('🎯 Tapped Ayah: ${coord.ayahNumber}');
-        
-        setState(() {
-          _tappedAyah = coord.ayahNumber;
-          _showAudioPlayer = true;
-          _activeAyah = coord.ayahNumber;
-          _activeAyahCoordinates = _pageCoordinates
-              .where((c) => c.ayahNumber == coord.ayahNumber)
-              .toList();
-        });
-        
-        HapticFeedback.mediumImpact();
-        return;
-      }
-    }
+    setState(() {
+      _tappedAyah = ayah;
+      _showAudioPlayer = true;
+      _activeAyah = ayah;
+      // Coordinates are not needed anymore for highlighting as the renderer handles it
+      _activeAyahCoordinates = []; 
+    });
     
-    // If we tap empty area, toggle bars
-    _toggleFullscreen();
+    HapticFeedback.mediumImpact();
   }
 
   void _enterSanctuaryMode() {
@@ -207,6 +180,22 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _barAnimController.forward();
   }
 
+  @override
+  void dispose() {
+    _statsTimer?.cancel();
+    _pageController.dispose();
+    _barAnimController.dispose();
+    _pageTurnController.dispose();
+    _sanctuaryController.dispose();
+    
+    // Safety: Reset UI mode
+    Future.delayed(Duration.zero, () {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    });
+    
+    super.dispose();
+  }
+
   Future<void> _loadTheme() async {
     final theme = await ThemeService.getMushafTheme();
     if (mounted) {
@@ -216,46 +205,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     }
   }
 
-  Future<void> _initMushafDir() async {
-    final prefs = await SharedPreferences.getInstance();
-    _currentReading = await ReadingService.getSelectedReading();
-
-    final isDownloaded = prefs.getBool(
-            'mushaf_downloaded_${_currentReading == ReadingService.hafs ? 'hafs' : 'warsh'}') ??
-        (prefs.getBool('mushaf_downloaded') ?? false);
-
-    if (isDownloaded) {
-      final dir = await getApplicationDocumentsDirectory();
-      final readingFolder = _currentReading == ReadingService.hafs
-          ? 'mushaf_hafs'
-          : 'mushaf_warsh';
-
-      final oldDir = Directory('${dir.path}/mushaf_pages');
-      final newDir = Directory('${dir.path}/$readingFolder');
-
-      final finalPath = (await newDir.exists()) ? newDir.path : oldDir.path;
-
-      if (mounted) {
-        setState(() {
-          _isDownloaded = true;
-          _mushafDirPath = finalPath;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isDownloaded = false;
-          _mushafDirPath = null;
-        });
-      }
-    }
-  }
-
   Future<void> _loadPageData(int pageNumber, {bool isBackground = false}) async {
     final currentLoadId = ++_lastLoadId;
     
     if (!isBackground) setState(() => _isLoading = true);
-    await _initMushafDir();
     
     // Check if this request is still relevant
     if (currentLoadId != _lastLoadId) return;
@@ -270,23 +223,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
     _pageCoordinates = coords;
 
-    if (_isDownloaded && _mushafDirPath != null) {
-      final file = File(
-          '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png');
-      _pageFileExists = await file.exists();
-    } else {
-      _pageFileExists = false;
-    }
-
     if (!isBackground) setState(() => _isLoading = false);
     if (isBackground && mounted) {
       setState(() {
-        // Refresh active coordinates if audio is already playing on this page
         if (_activeAyah != null) {
           _activeAyahCoordinates = _pageCoordinates
               .where((c) => c.ayahNumber == _activeAyah)
               .toList();
-          debugPrint('📍 Coordinates refreshed for Ayah $_activeAyah: ${_activeAyahCoordinates.length} segments');
         }
       });
     }
@@ -315,22 +258,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       _barAnimController.reverse();
     }
-  }
-
-  @override
-  void dispose() {
-    // Safety: dispose controllers
-    _pageController.dispose();
-    _barAnimController.dispose();
-    _pageTurnController.dispose();
-
-    // Reset UI mode safely after the current frame to avoid blocking the transition
-    // especially important in "Run and Debug" mode to prevent platform channel deadlocks.
-    Future.delayed(Duration.zero, () {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    });
-    
-    super.dispose();
   }
 
   // ============================================================
@@ -817,11 +744,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         minScale: 1.0,
         maxScale: 3.5,
         child: GestureDetector(
-          onTapDown: (details) {
-            final box = context.findRenderObject() as RenderBox;
-            final localPos = box.globalToLocal(details.globalPosition);
-            _handleAyahTap(localPos, box.size.width, box.size.height);
-          },
+          onTap: _toggleFullscreen,
           onLongPress: () => _showPageOptions(context, pageNumber),
           child: Stack(
             fit: StackFit.expand,
@@ -944,26 +867,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   }
 
   Widget _buildPageImage(int pageNumber) {
-    if (pageNumber <= 5) {
-      return Image.asset(
-        'assets/mushaf/page${pageNumber.toString().padLeft(3, '0')}.png',
-        fit: BoxFit.fill,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPremiumPlaceholder(pageNumber),
-      );
-    } else if (_isDownloaded && _mushafDirPath != null && _pageFileExists) {
-      final file = File(
-          '$_mushafDirPath/page${pageNumber.toString().padLeft(3, '0')}.png');
-      return Image.file(
-        file,
-        fit: BoxFit.fill,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPremiumPlaceholder(pageNumber),
-      );
-    }
-    return _buildPremiumPlaceholder(pageNumber);
+    // We prioritize the Smart Vector Mushaf to ensure precision and interactive features
+    return _buildVectorPage(pageNumber);
+  }
+
+  Widget _buildVectorPage(int pageNumber) {
+    return MushafPageRenderer(
+      pageNumber: pageNumber,
+      highlightedSurah: QuranPageHelper.getSurahForPage(pageNumber),
+      highlightedAyah: _activeAyah,
+      isMemorizationMode: _isMemorizationMode,
+      theme: _currentTheme,
+      onAyahTapped: (surah, ayah) => _handleAyahTap(surah, ayah),
+    );
   }
 
   // ============================================================
@@ -1220,70 +1136,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   }
 
   // ============================================================
-  //  PREMIUM PLACEHOLDER
-  // ============================================================
-  Widget _buildPremiumPlaceholder(int pageNumber) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [_parchment, _parchmentDark, _parchment],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // زخرفة علوية
-            CustomPaint(
-              size: const Size(200, 30),
-              painter: _OrnamentLinePainter(color: _richGold.withValues(alpha: 0.3)),
-            ),
-            const SizedBox(height: 30),
-            Icon(
-              Icons.menu_book_rounded,
-              size: 80,
-              color: _deepGreen.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'صفحة $pageNumber',
-              style: GoogleFonts.amiri(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: _deepGreen.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'حمّل الصفحات لقراءة المصحف كاملاً',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.amiri(
-                color: _deepGreen.withValues(alpha: 0.3),
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 30),
-            CustomPaint(
-              size: const Size(200, 30),
-              painter: _OrnamentLinePainter(color: _richGold.withValues(alpha: 0.3)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
   // ============================================================
   //  SHARE CURRENT PAGE
   // ============================================================
@@ -1356,21 +1208,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                       onTap: () {
                         Navigator.pop(context);
                         setState(() => _showAudioPlayer = true);
-                      },
-                    ),
-                    _buildPremiumOption(
-                      icon: Icons.swap_horiz_rounded,
-                      label: _currentReading == ReadingService.hafs
-                          ? 'رواية ورش'
-                          : 'رواية حفص',
-                      onTap: () async {
-                        Navigator.pop(context);
-                        final nextReading =
-                            _currentReading == ReadingService.hafs
-                                ? ReadingService.warsh
-                                : ReadingService.hafs;
-                        await ReadingService.setSelectedReading(nextReading);
-                        await _loadPageData(_currentPage);
                       },
                     ),
                     _buildPremiumOption(
@@ -1739,35 +1576,6 @@ class _HeaderOrnamentPainter extends CustomPainter {
     
     canvas.drawPath(path, paint);
     canvas.drawCircle(Offset(size.width * 0.85, size.height / 2), 1.5, paint..style = PaintingStyle.fill);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-/// خط زخرفي أفقي
-class _OrnamentLinePainter extends CustomPainter {
-  final Color color;
-  _OrnamentLinePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1;
-
-    final y = size.height / 2;
-    // خط رئيسي
-    canvas.drawLine(Offset(20, y), Offset(size.width - 20, y), paint);
-    // ماسة صغيرة في المنتصف
-    final cx = size.width / 2;
-    final path = Path()
-      ..moveTo(cx, y - 5)
-      ..lineTo(cx + 5, y)
-      ..lineTo(cx, y + 5)
-      ..lineTo(cx - 5, y)
-      ..close();
-    canvas.drawPath(path, paint..style = PaintingStyle.fill);
   }
 
   @override

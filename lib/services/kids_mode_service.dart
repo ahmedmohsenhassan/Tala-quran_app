@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KidsModeService extends ChangeNotifier {
-  static final KidsModeService _instance = KidsModeService._internal();
-  factory KidsModeService() => _instance;
-  KidsModeService._internal() {
-    _loadState();
-  }
-
   bool _isKidsModeActive = false;
   bool get isKidsModeActive => _isKidsModeActive;
+
+  KidsModeService() {
+    _loadState();
+  }
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();

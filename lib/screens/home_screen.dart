@@ -10,9 +10,10 @@ import '../services/bookmark_service.dart';
 import '../services/streak_service.dart';
 import '../services/notification_service.dart';
 import 'mushaf_viewer_screen.dart';
-import 'surah_detail_screen.dart';
 import 'search_screen.dart';
 import 'reading_plan_screen.dart';
+import 'stats_screen.dart';
+import '../services/reading_stats_service.dart';
 import '../services/kids_mode_service.dart';
 import '../data/rub_data.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _lastRead;
   Map<String, dynamic>? _streakData;
+  Map<String, dynamic>? _statsData;
   late TabController _tabController;
 
   @override
@@ -40,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _loadData() async {
     final lastRead = await BookmarkService.getLastRead();
     final streak = await StreakService.getStreakData();
+    final stats = await ReadingStatsService.getStats();
+    
     if (mounted) {
       setState(() {
         _lastRead = lastRead ??
@@ -50,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen>
               'isDefault': true,
             };
         _streakData = streak;
+        _statsData = stats;
       });
       // عرض رسالة ترحيبية ذكية — Show smart welcome message
       final settings = await NotificationService.getSettings();
@@ -162,7 +167,16 @@ class _HomeScreenState extends State<HomeScreen>
               revelationType: surah['revelationType']!,
               totalAyahs: surah['totalAyahs']!,
               pageNumber: surah['pageNumber']!,
-              onTap: () => _showReadModeDialog(context, surah),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => MushafViewerScreen(
+                      initialPage: surah['pageNumber']!,
+                    ),
+                  ),
+                ).then((_) => _loadData());
+              },
             ),
           ],
         );
@@ -208,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildJuzTab() {
-    final List<QuranQuarter> quarters = RubData.quarters;
+    const List<QuranQuarter> quarters = RubData.quarters;
     
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -355,6 +369,10 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             _buildKhatmaCard(),
             const SizedBox(width: 16),
+            if (_statsData != null) ...[
+              _buildSmartStatsCard(),
+              const SizedBox(width: 16),
+            ],
             if (_streakData != null) ...[
               _buildStreakCard(),
               const SizedBox(width: 16),
@@ -395,6 +413,62 @@ class _HomeScreenState extends State<HomeScreen>
             const SizedBox(height: 12),
             Text('نظّم ختمتك وقراءتك',
                 style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartStatsCard() {
+    final stats = _statsData!;
+    final double progress = stats['dailyGoalProgress'] ?? 0.0;
+    final int todayPages = stats['todayPages'] ?? 0;
+
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StatsScreen()),
+      ).then((_) => _loadData()),
+      child: Container(
+        width: 180,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.gold.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_graph_rounded, color: AppColors.gold, size: 20),
+                const SizedBox(width: 8),
+                Text('إحصائيات ذكية',
+                    style: GoogleFonts.amiri(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('$todayPages / 5 صفحة',
+                    style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 11)),
+                Text('${(progress * 100).toInt()}%',
+                    style: GoogleFonts.outfit(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 4,
+                backgroundColor: Colors.white.withValues(alpha: 0.05),
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.gold),
+              ),
+            ),
           ],
         ),
       ),
@@ -673,145 +747,6 @@ class _HomeScreenState extends State<HomeScreen>
       default:
         return 'يوم مبارك';
     }
-  }
-
-  void _showReadModeDialog(BuildContext context, Map<String, dynamic> surah) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.cardBackground,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'سورة ${surah['name']}',
-                style: GoogleFonts.amiri(
-                  color: AppColors.gold,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 32),
-              _ReadModeOption(
-                icon: Icons.menu_book_rounded,
-                title: 'قراءة من المصحف',
-                subtitle: 'تجربة بصرية كلاسيكية',
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MushafViewerScreen(
-                        initialPage:
-                            QuranPageHelper.getPageForSurah(surah['number']),
-                      ),
-                    ),
-                  ).then((_) => _loadData());
-                },
-              ),
-              const SizedBox(height: 12),
-              _ReadModeOption(
-                icon: Icons.text_snippet_rounded,
-                title: 'قراءة نصية حديثة',
-                subtitle: 'خطوط واضحة ونظام تصفح سريع',
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SurahDetailScreen(
-                        surahNumber: surah['number'],
-                        surahName: surah['name'],
-                      ),
-                    ),
-                  ).then((_) => _loadData());
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReadModeOption extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _ReadModeOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: AppColors.gold, size: 24),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.amiri(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    subtitle,
-                    style:
-                        GoogleFonts.amiri(color: Colors.white54, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_back_ios_new_rounded,
-                color: Colors.white24, size: 14),
-          ],
-        ),
-      ),
-    );
   }
 }
 
