@@ -254,6 +254,30 @@ class NotificationService {
       payload: category,
     );
   }
+  /// جدولة إشعار من فئة معينة فوراً (للمحفزات الذكية)
+  static Future<void> scheduleCategory(String category, {Duration delay = const Duration(hours: 4)}) async {
+    final message = _getRandomFromCategory(category);
+    final scheduledDate = tz.TZDateTime.now(tz.local).add(delay);
+
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDesc,
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+
+    await _notifPlugin.zonedSchedule(
+      _wirdNotifId + 1, // ID فريد للمحفزات الذكية
+      message['title']!,
+      message['body']!,
+      scheduledDate,
+      const NotificationDetails(android: androidDetails),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      payload: category,
+    );
+  }
 
   /// حساب الوقت القادم — Next instance of time
   static tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {

@@ -162,6 +162,15 @@ class QuranTextService {
   /// جلب آيات صفحة معينة مع بيانات الكلمات والأسطر (للدقة القصوى)
   /// Fetch verses for a specific page with word-level data and line numbers
   Future<List<Map<String, dynamic>>> getVersesByPage(int pageNumber) async {
+    // 1. Try local assets first (Offline-First)
+    try {
+      final String localData = await rootBundle.loadString('assets/mushaf/data/verses_p$pageNumber.json');
+      final decoded = json.decode(localData);
+      return List<Map<String, dynamic>>.from(decoded);
+    } catch (_) {
+      // Local not found, proceed to API
+    }
+
     try {
       final response = await _dio.get(
         'https://api.quran.com/api/v4/quran/verses/uthmani',
@@ -184,6 +193,15 @@ class QuranTextService {
   /// جلب بيانات الكلمات لصفحة معينة (للتظليل كلمة بكلمة)
   /// Fetch word-level data for a specific page (for Word-by-Word highlighting)
   Future<List<Map<String, dynamic>>> getPageWords(int pageNumber) async {
+    // 1. Try local assets first (Offline-First)
+    try {
+      final String localData = await rootBundle.loadString('assets/mushaf/data/words_p$pageNumber.json');
+      final decoded = json.decode(localData);
+      return List<Map<String, dynamic>>.from(decoded);
+    } catch (_) {
+      // Local not found, proceed to API
+    }
+
     try {
       final response = await _dio.get(
         'https://api.quran.com/api/v4/verses/by_page/$pageNumber',

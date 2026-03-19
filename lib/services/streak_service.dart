@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'smart_notification_service.dart';
 
 /// خدمة تتبع المواظبة اليومية — Daily Streak Tracking Service
 class StreakService {
@@ -62,6 +63,9 @@ class StreakService {
     await prefs.setInt(_currentStreakKey, currentStreak);
     await prefs.setInt(_longestStreakKey, longestStreak);
     await prefs.setInt(_totalDaysKey, totalDays);
+
+    // جدولة المحفز الذكي القادم — Schedule next smart motivation
+    SmartNotificationService.scheduleNextSmartTouch();
   }
 
   /// الحصول على بيانات الـ Streak — Get streak data

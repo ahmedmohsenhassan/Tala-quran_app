@@ -14,15 +14,15 @@ import '../services/streak_service.dart';
 import '../services/khatma_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
-import '../services/ayah_sync_service.dart';
-import '../models/ayah_coordinate.dart';
-import '../widgets/ayah_highlighter.dart';
 import 'tafseer_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 import '../services/theme_service.dart';
 import '../widgets/mushaf_page_renderer.dart';
+import '../widgets/mushaf_settings_dialog.dart';
+import '../widgets/ayah_interaction_bubble.dart';
+import '../services/quran_text_service.dart';
 
 // ============================================================
 //  PREMIUM COLORS & THEME HELPERS
@@ -90,20 +90,33 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   bool _isLoading = true;
   String _currentSurahName = '';
   int _currentJuz = 1;
+  
+  final QuranTextService _quranService = QuranTextService();
 
   bool _isMemorizationMode = false;
   bool _isPeeking = false;
 
   // Highlighting state
   int? _activeAyah;
-  List<AyahCoordinate> _pageCoordinates = [];
-  List<AyahCoordinate> _activeAyahCoordinates = [];
   int? _tappedAyah; // New: to track specifically tapped ayah
   bool _isSanctuaryMode = false;
   
   // Optimization
   int _lastLoadId = 0; // Race condition protection
   Timer? _statsTimer;
+
+  // Real Mushaf Settings
+  double _quranFontSize = 24.0;
+  double _translationFontSize = 16.0;
+  String _selectedFont = ThemeService.fontAmiri;
+  String _selectedEdition = ThemeService.editionMadina1405;
+
+  // Interaction Bubble State
+  bool _showBubble = false;
+  String _bubbleTranslation = '';
+  String _bubbleTafseer = '';
+  int? _bubbleSurah;
+  int? _bubbleAyah;
 
   // Animation controllers for premium effects
   late AnimationController _barAnimController;
@@ -146,18 +159,38 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _loadTheme();
   }
 
-  void _handleAyahTap(int surah, int ayah) {
+  Future<void> _handleAyahTap(int surah, int ayah) async {
     debugPrint('🎯 Tapped Ayah via Dynamic Renderer: $ayah');
     
+    // Set loading/active state
     setState(() {
       _tappedAyah = ayah;
-      _showAudioPlayer = true;
       _activeAyah = ayah;
-      // Coordinates are not needed anymore for highlighting as the renderer handles it
-      _activeAyahCoordinates = []; 
+      _bubbleSurah = surah;
+      _bubbleAyah = ayah;
     });
-    
+
     HapticFeedback.mediumImpact();
+
+    try {
+      // 1. Fetch Translation (ID 131 is usually a good English/Arabic default, but let's use 16 for Tafseer as well)
+      final translation = await _quranService.getTranslation(surah, ayah, 131);
+      
+      // 2. Fetch Tafseer
+      final tafseerData = await _quranService.getTafseer(surah, ayah);
+      final tafseer = tafseerData['text'] ?? "لا يوجد تفسير متاح.";
+
+      if (mounted) {
+        setState(() {
+          _bubbleTranslation = translation;
+          _bubbleTafseer = tafseer;
+          _showBubble = true;
+          _showAudioPlayer = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching bubble data: $e');
+    }
   }
 
   void _enterSanctuaryMode() {
@@ -198,11 +231,38 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
   Future<void> _loadTheme() async {
     final theme = await ThemeService.getMushafTheme();
+    final qSize = await ThemeService.getQuranFontSize();
+    final tSize = await ThemeService.getTranslationFontSize();
+    final font = await ThemeService.getThemeFont();
+    final edition = await ThemeService.getMushafEdition();
+
     if (mounted) {
       setState(() {
         _currentTheme = theme;
+        _quranFontSize = qSize;
+        _translationFontSize = tSize;
+        _selectedFont = font;
+        _selectedEdition = edition;
       });
     }
+  }
+
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => MushafSettingsDialog(
+        onQuranFontSizeChanged: (val) => setState(() => _quranFontSize = val),
+        onTranslationFontSizeChanged: (val) => setState(() => _translationFontSize = val),
+        onFontChanged: (val) => setState(() => _selectedFont = val),
+        onThemeChanged: (val) => setState(() {
+          _currentTheme = val;
+          // Trigger global theme update if needed
+        }),
+        onEditionChanged: (val) => setState(() => _selectedEdition = val),
+      ),
+    );
   }
 
   Future<void> _loadPageData(int pageNumber, {bool isBackground = false}) async {
@@ -213,24 +273,15 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     // Check if this request is still relevant
     if (currentLoadId != _lastLoadId) return;
 
+    // Surah/Juz info is handled by QuranPageHelper
     _currentSurahName = QuranPageHelper.getSurahNameForPage(pageNumber);
     _currentJuz = QuranPageHelper.getJuzForPage(pageNumber);
 
-    final coords = await AyahSyncService().getPageCoordinates(pageNumber);
-    
-    // Check again after async gap
-    if (currentLoadId != _lastLoadId) return;
-
-    _pageCoordinates = coords;
-
+    // Stop loading indicator
     if (!isBackground) setState(() => _isLoading = false);
     if (isBackground && mounted) {
       setState(() {
-        if (_activeAyah != null) {
-          _activeAyahCoordinates = _pageCoordinates
-              .where((c) => c.ayahNumber == _activeAyah)
-              .toList();
-        }
+        // Highlighting is now handled internally by MushafPageRenderer
       });
     }
   }
@@ -292,12 +343,35 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   ),
 
                   // === محراب التلاوة Overlay ===
-                  if (_isSanctuaryMode)
                     Positioned.fill(
                       key: const ValueKey('mushaf_sanctuary_overlay'),
                       child: _SanctuaryOverlay(
                         controller: _sanctuaryController,
                         onExit: _exitSanctuaryMode,
+                      ),
+                    ),
+
+                  // === Ayah Interaction Bubble (Premium Floating Layer) ===
+                  if (_showBubble && _bubbleSurah != null && _bubbleAyah != null)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _showBubble = false),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.1), // Dim background
+                          child: Center(
+                            child: AyahInteractionBubble(
+                              surah: _bubbleSurah!,
+                              ayah: _bubbleAyah!,
+                              translation: _bubbleTranslation,
+                              tafseer: _bubbleTafseer,
+                              fontSize: _translationFontSize,
+                              onPlay: () {
+                                // Play logic is already triggered in _handleAyahTap
+                              },
+                              onClose: () => setState(() => _showBubble = false),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
 
@@ -325,9 +399,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                 if (mounted) {
                                   setState(() {
                                     _activeAyah = ayah;
-                                    _activeAyahCoordinates = _pageCoordinates
-                                        .where((c) => c.ayahNumber == ayah)
-                                        .toList();
                                   });
                                 }
                               },
@@ -342,7 +413,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                 setState(() {
                                   _showAudioPlayer = false;
                                   _activeAyah = null;
-                                  _activeAyahCoordinates = [];
                                   _isMemorizationMode = false;
                                   _tappedAyah = null; // Reset tapped ayah
                                 });
@@ -740,128 +810,29 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   Widget _buildPremiumPage(int pageNumber) {
     return Container(
       color: _parchment,
-      child: InteractiveViewer(
-        minScale: 1.0,
-        maxScale: 3.5,
-        child: GestureDetector(
-          onTap: _toggleFullscreen,
-          onLongPress: () => _showPageOptions(context, pageNumber),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Page Content
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 30, 10, 30),
-                child: _buildPageImage(pageNumber),
-              ),
-
-              // Blur layer for memorization mode
-              if (_isMemorizationMode && !_isPeeking)
-                Positioned.fill(
-                  child: Listener(
-                    onPointerDown: (_) => setState(() => _isPeeking = true),
-                    onPointerUp: (_) => setState(() => _isPeeking = false),
-                    onPointerCancel: (_) => setState(() => _isPeeking = false),
-                    behavior: HitTestBehavior.opaque,
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                      child: Container(
-                        color: Colors.white.withValues(alpha: 0.05),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Ornamental Frame
-              IgnorePointer(
-                child: CustomPaint(
-                  painter: _OrnamentalFramePainter(
-                    color: _richGold.withValues(alpha: 0.35),
-                  ),
-                ),
-              ),
-
-              // Dynamic Header & Footer
-              _buildPageHeader(pageNumber),
-              _buildPageFooter(pageNumber),
-
-              // Highlight layer
-              if (_currentPage == pageNumber &&
-                  _activeAyah != null &&
-                  _activeAyahCoordinates.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 30, 10, 30),
-                  child: AyahHighlighter(
-                    coordinates: _activeAyahCoordinates,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPageHeader(int pageNumber) {
-    final surahName = QuranPageHelper.getSurahNameForPage(pageNumber);
-    final juzNumber = QuranPageHelper.getJuzForPage(pageNumber);
-
-    return Positioned(
-      top: 10,
-      left: 10,
-      right: 10,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // Juz Info with Decoration
-          _OrnateHeader(
-            text: 'الجزء $juzNumber',
-            isLeft: true,
-            color: _richGold,
-          ),
-          
-          // Surah Name with Decoration
-          _OrnateHeader(
-            text: surahName,
-            isLeft: false,
-            color: _richGold,
-          ),
-        ],
-      ),
-    );
-  }
+          // Page Content - Main Renderer handles its own interactivity and ornaments
+          _buildPageImage(pageNumber),
 
-  Widget _buildPageFooter(int pageNumber) {
-    return Positioned(
-      bottom: 2,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Container(
-          width: 45,
-          height: 45,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: _richGold.withValues(alpha: 0.15), width: 0.5),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CustomPaint(
-                painter: _FooterOrnamentPainter(color: _richGold.withValues(alpha: 0.4)),
-                size: const Size(45, 45),
-              ),
-              Text(
-                '$pageNumber',
-                style: GoogleFonts.outfit(
-                  color: _darkGold,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+          // Blur layer for memorization mode (Overlay on top)
+          if (_isMemorizationMode && !_isPeeking)
+            Positioned.fill(
+              child: Listener(
+                onPointerDown: (_) => setState(() => _isPeeking = true),
+                onPointerUp: (_) => setState(() => _isPeeking = false),
+                onPointerCancel: (_) => setState(() => _isPeeking = false),
+                behavior: HitTestBehavior.opaque,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
+                  child: Container(
+                    color: Colors.white.withValues(alpha: 0.05),
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -879,6 +850,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       isMemorizationMode: _isMemorizationMode,
       theme: _currentTheme,
       onAyahTapped: (surah, ayah) => _handleAyahTap(surah, ayah),
+      fontSize: _quranFontSize,
+      fontFamily: _selectedFont,
+      edition: _selectedEdition,
     );
   }
 
@@ -926,14 +900,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               ),
               child: Row(
                 children: [
-                  // زر وضع محراب التلاوة
                   _PremiumIconButton(
                     icon: Icons.self_improvement_rounded,
                     onPressed: _enterSanctuaryMode,
                   ),
                   const SizedBox(width: 8),
+
+                  // زر الإعدادات (Real Mushaf Settings)
+                  _PremiumIconButton(
+                    icon: Icons.settings_rounded,
+                    onPressed: _showSettings,
+                  ),
+                  const SizedBox(width: 8),
                   
-                  // زر الرجوع
                   _PremiumIconButton(
                     icon: Icons.arrow_back_ios_new_rounded,
                     onPressed: () => Navigator.of(context).pop(),
@@ -945,8 +924,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // زخرفة علوية صغيرة
-                      _MiniOrnament(color: _richGold.withValues(alpha: 0.4)),
                       const SizedBox(height: 2),
                       Text(
                         _currentSurahName,
@@ -970,7 +947,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                         ),
                       ),
                       const SizedBox(height: 2),
-                      _MiniOrnament(color: _richGold.withValues(alpha: 0.4)),
                     ],
                   ),
 
@@ -1350,238 +1326,6 @@ class _PremiumBackgroundPainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-/// إطار زخرفي إسلامي حول الصفحة
-class _OrnamentalFramePainter extends CustomPainter {
-  final Color color;
-  _OrnamentalFramePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    // Main Outer Border
-    final outerRect = Rect.fromLTWH(8, 8, size.width - 16, size.height - 16);
-    canvas.drawRRect(RRect.fromRectAndRadius(outerRect, const Radius.circular(2)), paint);
-
-    // Thick frame area
-    final thickFramePaint = Paint()
-      ..color = color.withValues(alpha: 0.1)
-      ..style = PaintingStyle.fill;
-    
-    final innerRect = Rect.fromLTWH(18, 18, size.width - 36, size.height - 36);
-    
-    // Draw the "frame" body
-    canvas.drawPath(
-      Path.combine(
-        PathOperation.difference,
-        Path()..addRect(outerRect),
-        Path()..addRect(innerRect),
-      ),
-      thickFramePaint,
-    );
-
-    // Inner Border
-    canvas.drawRect(innerRect, paint..strokeWidth = 0.5);
-
-    // Ornaments in corners
-    _drawCorners(canvas, size, color);
-    _drawSideOrnaments(canvas, size, color);
-  }
-
-  void _drawCorners(Canvas canvas, Size size, Color color) {
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-
-    const s = 25.0; // Corner size
-    const margin = 8.0;
-
-    // TL
-    canvas.drawLine(const Offset(margin, margin), const Offset(margin + s, margin), p);
-    canvas.drawLine(const Offset(margin, margin), const Offset(margin, margin + s), p);
-    // TR
-    canvas.drawLine(Offset(size.width - margin, margin), Offset(size.width - margin - s, margin), p);
-    canvas.drawLine(Offset(size.width - margin, margin), Offset(size.width - margin, margin + s), p);
-    // BL
-    canvas.drawLine(Offset(margin, size.height - margin), Offset(margin + s, size.height - margin), p);
-    canvas.drawLine(Offset(margin, size.height - margin), Offset(margin, size.height - margin - s), p);
-    // BR
-    canvas.drawLine(Offset(size.width - margin, size.height - margin), Offset(size.width - margin - s, size.height - margin), p);
-    canvas.drawLine(Offset(size.width - margin, size.height - margin), Offset(size.width - margin, size.height - margin - s), p);
-  }
-
-  void _drawSideOrnaments(Canvas canvas, Size size, Color color) {
-    final p = Paint()..color = color.withValues(alpha: 0.3)..strokeWidth = 0.5;
-    // Tiny dots/diamonds along the frame
-    for (double i = 40; i < size.height - 40; i += 60) {
-      canvas.drawCircle(Offset(13, i), 1, p);
-      canvas.drawCircle(Offset(size.width - 13, i), 1, p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _OrnamentalFramePainter oldDelegate) =>
-      oldDelegate.color != color;
-}
-
-
-class _FooterOrnamentPainter extends CustomPainter {
-  final Color color;
-  _FooterOrnamentPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final r = size.width / 2;
-
-    // Draw 8 stylized arcs for a floral look
-    for (int i = 0; i < 8; i++) {
-      final angle = i * 45 * 3.14 / 180;
-      canvas.save();
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(angle);
-      
-      // Draw a small decorative arc/leaf
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(r - 10, 0), radius: 6),
-        -1.5,
-        3.0,
-        false,
-        paint,
-      );
-      
-      canvas.restore();
-    }
-    
-    // Outer intricate shell
-    final shellPaint = Paint()
-      ..color = color.withValues(alpha: 0.6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.8;
-      
-    for (int i = 0; i < 8; i++) {
-      final angle = (i * math.pi / 4);
-      final offset = Offset(math.cos(angle) * (r - 2), math.sin(angle) * (r - 2));
-      canvas.drawCircle(center + offset, 4, shellPaint);
-    }
-    
-    // Inner circles
-    canvas.drawCircle(center, r - 5, paint..strokeWidth = 0.6);
-    canvas.drawCircle(center, r - 8, paint..strokeWidth = 0.3);
-    
-    // Core dots
-    for (int i = 0; i < 4; i++) {
-       final angle = (i * math.pi / 2);
-       final dotOffset = Offset(math.cos(angle) * 11, math.sin(angle) * 11);
-       canvas.drawCircle(center + dotOffset, 1, paint..style = PaintingStyle.fill);
-    }
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-/// Ornate Header Widget for Surah/Juz info
-class _OrnateHeader extends StatelessWidget {
-  final String text;
-  final bool isLeft;
-  final Color color;
-
-  const _OrnateHeader({
-    required this.text,
-    required this.isLeft,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!isLeft) _HeaderOrnament(color: color, flip: true),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: GoogleFonts.amiri(
-              color: color.withValues(alpha: 0.9),
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.2),
-                  offset: const Offset(0, 1),
-                  blurRadius: 2,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (isLeft) _HeaderOrnament(color: color, flip: false),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderOrnament extends StatelessWidget {
-  final Color color;
-  final bool flip;
-  const _HeaderOrnament({required this.color, required this.flip});
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.scale(
-      scaleX: flip ? -1 : 1,
-      child: CustomPaint(
-        size: const Size(24, 12),
-        painter: _HeaderOrnamentPainter(color: color),
-      ),
-    );
-  }
-}
-
-class _HeaderOrnamentPainter extends CustomPainter {
-  final Color color;
-  _HeaderOrnamentPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color.withValues(alpha: 0.6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    final path = Path();
-    // Intricate Islamic curve
-    path.moveTo(0, size.height / 2);
-    path.quadraticBezierTo(size.width * 0.4, 0, size.width * 0.8, size.height / 2);
-    path.quadraticBezierTo(size.width * 0.9, size.height * 0.7, size.width, size.height / 2);
-    path.moveTo(size.width * 0.2, size.height / 2);
-    path.lineTo(size.width * 0.6, size.height / 2);
-    
-    canvas.drawPath(path, paint);
-    canvas.drawCircle(Offset(size.width * 0.85, size.height / 2), 1.5, paint..style = PaintingStyle.fill);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
 /// زر أيقونة بتأثير ذهبي
 class _PremiumIconButton extends StatelessWidget {
   final IconData icon;
@@ -1740,34 +1484,6 @@ class _SanctuaryFlowIndicator extends StatelessWidget {
     );
   }
 }
-
-/// زخرفة علوية مصغرة
-class _MiniOrnament extends StatelessWidget {
-  final Color color;
-  const _MiniOrnament({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(width: 20, height: 1, color: color),
-        const SizedBox(width: 4),
-        Container(
-          width: 4,
-          height: 4,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Container(width: 20, height: 1, color: color),
-      ],
-    );
-  }
-}
-
 
 /// Clipper for the Cylindrical Page Curl effect
 class _CylindricalPageClipper extends CustomClipper<Path> {

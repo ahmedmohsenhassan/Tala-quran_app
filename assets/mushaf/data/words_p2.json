@@ -1,0 +1,46 @@
+[
+  {"id":8,"verse_number":1,"verse_key":"2:1","words":[{"id":11,"position":1,"text_uthmani":"الٓمٓ","line_number":3,"location":"2:1:1"}]},
+  {"id":9,"verse_number":2,"verse_key":"2:2","words":[
+    {"id":1195,"position":1,"text_uthmani":"ذَٰلِكَ","line_number":3,"location":"2:2:1"},
+    {"id":1196,"position":2,"text_uthmani":"ٱلْكِتَـٰبُ","line_number":3,"location":"2:2:2"},
+    {"id":1197,"position":3,"text_uthmani":"لَا","line_number":3,"location":"2:2:3"},
+    {"id":1198,"position":4,"text_uthmani":"رَيْبَ ۛ","line_number":3,"location":"2:2:4"},
+    {"id":1200,"position":5,"text_uthmani":"فِيهِ ۛ","line_number":3,"location":"2:2:5"},
+    {"id":1202,"position":6,"text_uthmani":"هُدًۭى","line_number":3,"location":"2:2:6"},
+    {"id":1203,"position":7,"text_uthmani":"لِّلْمُتَّقِينَ","line_number":4,"location":"2:2:7"}
+  ]},
+  {"id":10,"verse_number":3,"verse_key":"2:3","words":[
+    {"id":2630,"position":1,"text_uthmani":"ٱلَّذِينَ","line_number":4,"location":"2:3:1"},
+    {"id":2631,"position":2,"text_uthmani":"يُؤْمِنُونَ","line_number":4,"location":"2:3:2"},
+    {"id":2632,"position":3,"text_uthmani":"بِٱلْغَيْبِ","line_number":4,"location":"2:3:3"},
+    {"id":2633,"position":4,"text_uthmani":"وَيُقِيمُونَ","line_number":4,"location":"2:3:4"},
+    {"id":2634,"position":5,"text_uthmani":"ٱلصَّلَوٰةَ","line_number":4,"location":"2:3:5"},
+    {"id":2635,"position":6,"text_uthmani":"وَمِمَّا","line_number":5,"location":"2:3:6"},
+    {"id":2636,"position":7,"text_uthmani":"رَزَقْنَـٰهُمْ","line_number":5,"location":"2:3:7"},
+    {"id":2637,"position":8,"text_uthmani":"يُنفِقُونَ","line_number":5,"location":"2:3:8"}
+  ]},
+  {"id":11,"verse_number":4,"verse_key":"2:4","words":[
+    {"id":4246,"position":1,"text_uthmani":"وَٱلَّذِينَ","line_number":5,"location":"2:4:1"},
+    {"id":4247,"position":2,"text_uthmani":"يُؤْمِنُونَ","line_number":5,"location":"2:4:2"},
+    {"id":4248,"position":3,"text_uthmani":"بِمَآ","line_number":5,"location":"2:4:3"},
+    {"id":4249,"position":4,"text_uthmani":"أُنزِلَ","line_number":5,"location":"2:4:4"},
+    {"id":4250,"position":5,"text_uthmani":"إِلَيْكَ","line_number":6,"location":"2:4:5"},
+    {"id":4251,"position":6,"text_uthmani":"وَمَآ","line_number":6,"location":"2:4:6"},
+    {"id":4252,"position":7,"text_uthmani":"أُنزِلَ","line_number":6,"location":"2:4:7"},
+    {"id":4253,"position":8,"text_uthmani":"مِن","line_number":6,"location":"2:4:8"},
+    {"id":4254,"position":9,"text_uthmani":"قَبْلِكَ","line_number":6,"location":"2:4:9"},
+    {"id":4255,"position":10,"text_uthmani":"وَبِٱلْـَٔاخِرَةِ","line_number":6,"location":"2:4:10"},
+    {"id":4256,"position":11,"text_uthmani":"هُمْ","line_number":6,"location":"2:4:11"},
+    {"id":4257,"position":12,"text_uthmani":"يُوقِنُونَ","line_number":6,"location":"2:4:12"}
+  ]},
+  {"id":12,"verse_number":5,"verse_key":"2:5","words":[
+    {"id":5544,"position":1,"text_uthmani":"أُو۟لَـٰٓئِكَ","line_number":7,"location":"2:5:1"},
+    {"id":5545,"position":2,"text_uthmani":"عَلَىٰ","line_number":7,"location":"2:5:2"},
+    {"id":5546,"position":3,"text_uthmani":"هُدًۭى","line_number":7,"location":"2:5:3"},
+    {"id":5547,"position":4,"text_uthmani":"مِّن","line_number":7,"location":"2:5:4"},
+    {"id":5548,"position":5,"text_uthmani":"رَّبِّهِمْ ۖ","line_number":7,"location":"2:5:5"},
+    {"id":5550,"position":6,"text_uthmani":"وَأُو۟لَـٰٓئِكَ","line_number":7,"location":"2:5:6"},
+    {"id":5551,"position":7,"text_uthmani":"هُمُ","line_number":8,"location":"2:5:7"},
+    {"id":5552,"position":8,"text_uthmani":"ٱلْمُفْلِحُونَ","line_number":8,"location":"2:5:8"}
+  ]}
+]

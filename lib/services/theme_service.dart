@@ -33,6 +33,48 @@ class ThemeService {
   static const String mushafPremium = 'premium'; // Gold ornate
   static const String mushafDark = 'dark_green'; // Dimmed comfort
 
+  static const String _quranFontSizeKey = 'app_quran_font_size';
+  static const String _translationFontSizeKey = 'app_translation_font_size';
+  static const String _mushafEditionKey = 'app_mushaf_edition';
+
+  /// Editions
+  static const String editionMadina1405 = 'madina_1405';
+  static const String editionMadina1422 = 'madina_1422';
+  static const String editionWarsh = 'warsh_1428';
+
+  /// استرجاع حجم الخط القرآني (Default: 24.0)
+  static Future<double> getQuranFontSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_quranFontSizeKey) ?? 24.0;
+  }
+
+  static Future<void> setQuranFontSize(double size) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_quranFontSizeKey, size);
+  }
+
+  /// استرجاع حجم خط الترجمة (Default: 16.0)
+  static Future<double> getTranslationFontSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_translationFontSizeKey) ?? 16.0;
+  }
+
+  static Future<void> setTranslationFontSize(double size) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_translationFontSizeKey, size);
+  }
+
+  /// استرجاع طبعة المصحف
+  static Future<String> getMushafEdition() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_mushafEditionKey) ?? editionMadina1405;
+  }
+
+  static Future<void> setMushafEdition(String edition) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_mushafEditionKey, edition);
+  }
+
   /// استرجاع المظهر المحفوظ
   static Future<String> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
