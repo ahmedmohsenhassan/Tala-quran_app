@@ -118,6 +118,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   int? _bubbleSurah;
   int? _bubbleAyah;
 
+  bool _isVerticalMode = false; // New: Toggle for scrolling direction
+
   // Animation controllers for premium effects
   late AnimationController _barAnimController;
   late Animation<double> _barSlideAnimation;
@@ -621,12 +623,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                             child: PageView.builder(
                               key: const PageStorageKey('mushaf_page_view'),
                               controller: _pageController,
+                              scrollDirection: _isVerticalMode ? Axis.vertical : Axis.horizontal,
                               clipBehavior: Clip.none, // Essential for showing curl outside bounds
                               reverse: false, // Page 1 on right, Swipe R->L advances
                               itemCount: 604,
                               onPageChanged: (index) {
                                 final page = index + 1;
                                 
+                                // Premium Haptic Feedback on Page Turn (especially for vertical mode)
+                                if (_isVerticalMode) {
+                                  HapticFeedback.selectionClick();
+                                }
+              
                                 // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
                                 HapticFeedback.lightImpact();
 
@@ -656,34 +664,27 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                     }
                                     
                                     // THE HYPER-REALISTIC "CYLINDRICAL CURL"
-                                    if (pageOffset > 0 && pageOffset < 1) {
+                                    // Only show curl in horizontal mode
+                                    if (!_isVerticalMode && pageOffset > 0 && pageOffset < 1) {
                                       // 1. Calculations for the curl geometry
-                                      // angle: how much the page has flipped (0 to PI)
                                       angle = (pageOffset * math.pi).clamp(0.0, math.pi);
                                       
-                                      // The curl progression (0 at start, 1 at middle, 0 at end)
                                       final double curlFactor = math.sin(pageOffset * math.pi);
-                                      
-                                      // Protrusion towards the face (Z-axis)
                                       final double zProtrusion = curlFactor * 140; 
                                       
-                                      // 2. The Backface Logic
-                                      // When angle > PI/2, we are seeing the reverse side of the paper
                                       final bool isBackFace = angle > (math.pi / 2);
 
                                       return Transform(
                                         alignment: Alignment.centerRight,
                                         transform: Matrix4.identity()
-                                          ..setEntry(0, 3, pageOffset * MediaQuery.of(context).size.width) // Right Hinge Lock
-                                          ..setEntry(3, 2, 0.0012) // Perspective
-                                          ..setEntry(2, 3, zProtrusion) // Lift toward face
+                                          ..setEntry(0, 3, pageOffset * MediaQuery.of(context).size.width)
+                                          ..setEntry(3, 2, 0.0012)
+                                          ..setEntry(2, 3, zProtrusion)
                                           ..rotateY(angle)
-                                          // Dynamic Cylindrical Skew
                                           ..setEntry(1, 0, pageOffset * 0.15 * (isBackFace ? 1 : -1))
                                           ..rotateX(-pageOffset * 0.06),
                                         child: Stack(
                                           children: [
-                                            // High-Contrast Contact Shadow on the static page
                                             Positioned.fill(
                                               child: Container(
                                                 margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
@@ -699,7 +700,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                               ),
                                             ),
 
-                                            // The actual page (Front/Back)
                                             ClipPath(
                                               clipper: _CylindricalPageClipper(progress: pageOffset),
                                               child: Stack(
@@ -710,7 +710,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                                           alignment: Alignment.center,
                                                           transform: Matrix4.rotationY(math.pi),
                                                           child: Container(
-                                                            color: _parchmentDark, // Original Parchment Backhouse
+                                                            color: _parchmentDark,
                                                             child: ColorFiltered(
                                                               colorFilter: ColorFilter.mode(
                                                                 Colors.black.withValues(alpha: 0.8),
@@ -723,7 +723,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                                       : _buildPremiumPage(pageNumber),
                                                   ),
 
-                                                  // Sophisticated Cylindrical Shading
                                                   Positioned.fill(
                                                     child: Container(
                                                       decoration: BoxDecoration(
@@ -734,7 +733,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                                           colors: [
                                                             Colors.black.withValues(alpha: isBackFace ? 0.4 : 0.1),
                                                             Colors.transparent,
-                                                            Colors.white.withValues(alpha: curlFactor * 0.35), // The Glint
+                                                            Colors.white.withValues(alpha: curlFactor * 0.35),
                                                             Colors.black.withValues(alpha: isBackFace ? 0.1 : 0.5),
                                                           ],
                                                         ),
@@ -748,10 +747,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                         ),
                                       );
                                     } 
-                                    else if (pageOffset < 0) {
-                                      // Next page underneath
-                                      return _buildPremiumPage(pageNumber);
-                                    }
 
                                     return _buildPremiumPage(pageNumber);
                                   },
@@ -853,6 +848,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       fontSize: _quranFontSize,
       fontFamily: _selectedFont,
       edition: _selectedEdition,
+      pageController: _pageController,
     );
   }
 
@@ -903,6 +899,18 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   _PremiumIconButton(
                     icon: Icons.self_improvement_rounded,
                     onPressed: _enterSanctuaryMode,
+                  ),
+                  const SizedBox(width: 8),
+
+                  // زر وضع القراءة (Vertical vs Horizontal)
+                  _PremiumIconButton(
+                    icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
+                    onPressed: () {
+                      setState(() {
+                         _isVerticalMode = !_isVerticalMode;
+                      });
+                      HapticFeedback.mediumImpact();
+                    },
                   ),
                   const SizedBox(width: 8),
 

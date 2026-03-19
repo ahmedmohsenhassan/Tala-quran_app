@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import 'dart:math' as math;
+import 'premium_painters.dart';
 
 class SurahCard extends StatefulWidget {
   final int number;
@@ -162,8 +163,8 @@ class _SurahCardState extends State<SurahCard> with SingleTickerProviderStateMix
         children: [
           CustomPaint(
             size: const Size(45, 45),
-            painter: _IslamicStarPainter(
-              color: AppColors.gold.withValues(alpha: 0.3),
+            painter: _PremiumStarPainter(
+              color: AppColors.gold.withValues(alpha: 0.6),
             ),
           ),
           Text(
@@ -203,41 +204,18 @@ class _SurahCardState extends State<SurahCard> with SingleTickerProviderStateMix
   }
 }
 
-class _IslamicStarPainter extends CustomPainter {
+class _PremiumStarPainter extends CustomPainter {
   final Color color;
-  _IslamicStarPainter({required this.color});
+  _PremiumStarPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    final double cx = size.width / 2;
-    final double cy = size.height / 2;
-    final double radius = size.width / 2.3;
-
-    final path = Path();
-    for (int i = 0; i < 8; i++) {
-       final double angle = (i * math.pi / 4) - (math.pi / 8);
-       final double outerX = cx + radius * math.cos(angle);
-       final double outerY = cy + radius * math.sin(angle);
-       
-       final double innerAngle = angle + (math.pi / 8);
-       final double innerX = cx + (radius * 0.7) * math.cos(innerAngle);
-       final double innerY = cy + (radius * 0.7) * math.sin(innerAngle);
-
-       if (i == 0) {
-         path.moveTo(outerX, outerY);
-       } else {
-         path.lineTo(outerX, outerY);
-       }
-       path.lineTo(innerX, innerY);
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-    canvas.drawCircle(Offset(cx, cy), radius * 0.5, paint..strokeWidth = 0.5);
+    PremiumPainters.drawIslamicStar(
+      canvas: canvas,
+      center: Offset(size.width / 2, size.height / 2),
+      radius: size.width / 2.2,
+      color: color,
+    );
   }
 
   @override
