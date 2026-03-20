@@ -5,6 +5,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:provider/provider.dart';
 
 import '../widgets/mushaf_audio_player.dart';
 import '../widgets/ai_tajweed_sheet.dart';
@@ -12,17 +15,17 @@ import '../services/recitation_recognition_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/streak_service.dart';
 import '../services/khatma_service.dart';
+import '../services/settings_service.dart';
+import '../services/kids_mode_service.dart';
+import '../services/theme_service.dart';
+import '../services/quran_text_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
-import 'tafseer_screen.dart';
-import 'package:share_plus/share_plus.dart';
-import '../services/kids_mode_service.dart';
-import 'package:provider/provider.dart';
-import '../services/theme_service.dart';
 import '../widgets/mushaf_page_renderer.dart';
 import '../widgets/mushaf_settings_dialog.dart';
 import '../widgets/ayah_interaction_bubble.dart';
-import '../services/quran_text_service.dart';
+import '../widgets/mushaf_navigation_picker.dart';
+import 'tafseer_screen.dart';
 
 // ============================================================
 //  PREMIUM COLORS & THEME HELPERS
@@ -159,6 +162,14 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     )..repeat(reverse: true);
 
     _loadTheme();
+    _initWakelock();
+  }
+
+  Future<void> _initWakelock() async {
+    final keepScreenOn = await SettingsService.getKeepScreenOn();
+    if (keepScreenOn) {
+      WakelockPlus.enable();
+    }
   }
 
   Future<void> _handleAyahTap(int surah, int ayah) async {
@@ -222,6 +233,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _barAnimController.dispose();
     _pageTurnController.dispose();
     _sanctuaryController.dispose();
+    
+    // Disable wakelock on exit
+    WakelockPlus.disable();
     
     // Safety: Reset UI mode
     Future.delayed(Duration.zero, () {
@@ -300,6 +314,78 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       // تسجيل التقدم في الختمات والخطط
       await KhatmaService.recordPageProgress(_currentPage);
     });
+  }
+
+  void _showNavigationPicker() async {
+    HapticFeedback.heavyImpact();
+    final result = await showModalBottomSheet<Map<String, int>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => MushafNavigationPicker(
+        initialJuz: _currentJuz,
+        initialSurah: QuranPageHelper.getSurahForPage(_currentPage),
+        initialAyah: _activeAyah ?? 1,
+        theme: _currentTheme,
+      ),
+    );
+
+    if (result != null && mounted) {
+      final surah = result['surah']!;
+      final ayah = result['ayah']!;
+      _navigateToAyah(surah, ayah);
+    }
+  }
+
+  Future<void> _navigateToAyah(int surah, int ayah) async {
+    setState(() => _isLoading = true);
+    
+    // Find the page number for this (surah, ayah)
+    // We start from the surah's initial page and search forwards
+    int targetPage = QuranPageHelper.getPageForSurah(surah);
+    
+    try {
+      // Simple search: load pages until we find one containing our (surah, ayah)
+      // Most surahs are short, Al-Baqarah is the longest (~50 pages)
+      bool found = false;
+      for (int p = targetPage; p <= 604; p++) {
+        final verses = await _quranService.getVersesByPage(p);
+        final hasAyah = verses.any((v) {
+          final parts = v['verse_key'].split(':'); // e.g. "2:185"
+          return int.parse(parts[0]) == surah && int.parse(parts[1]) == ayah;
+        });
+
+        if (hasAyah) {
+          targetPage = p;
+          found = true;
+          break;
+        }
+        
+        // If we hit another surah without finding the ayah, something is wrong
+        final pageSurah = QuranPageHelper.getSurahForPage(p);
+        if (pageSurah > surah) break; 
+      }
+      
+      if (mounted) {
+        _pageController.jumpToPage(targetPage - 1);
+        setState(() {
+          _currentPage = targetPage;
+          _activeAyah = ayah;
+          _tappedAyah = ayah;
+          _isLoading = false;
+        });
+        _loadPageData(targetPage, isBackground: true);
+        _recordPageVisit(targetPage);
+        
+        // If not found (fallback), at least we went to the surah start
+        if (!found) {
+           debugPrint('⚠️ Ayah $surah:$ayah not found in precision search, landed on Surah start page $targetPage');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error navigating to ayah: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _toggleFullscreen() {
@@ -929,33 +1015,51 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   const Spacer(),
 
                   // معلومات السورة والجزء
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 2),
-                      Text(
-                        _currentSurahName,
-                        style: GoogleFonts.amiri(
-                          color: primaryColor,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          shadows: [
-                            Shadow(
-                              color: primaryColor.withValues(alpha: 0.3),
-                              blurRadius: 10,
+                  GestureDetector(
+                    onTap: _showNavigationPicker,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _richGold.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _richGold.withValues(alpha: 0.1), width: 1),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 2),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _currentSurahName,
+                                style: GoogleFonts.amiri(
+                                  color: primaryColor,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: primaryColor.withValues(alpha: 0.3),
+                                      blurRadius: 10,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor.withValues(alpha: 0.6), size: 20),
+                            ],
+                          ),
+                          Text(
+                            'الجزء $_currentJuz',
+                            style: GoogleFonts.amiri(
+                              color: _lightGold.withValues(alpha: 0.7),
+                              fontSize: 13,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 2),
+                        ],
                       ),
-                      Text(
-                        'الجزء $_currentJuz',
-                        style: GoogleFonts.amiri(
-                          color: _lightGold.withValues(alpha: 0.7),
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                    ],
+                    ),
                   ),
 
                   const Spacer(),

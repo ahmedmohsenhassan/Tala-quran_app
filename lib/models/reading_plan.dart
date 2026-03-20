@@ -5,31 +5,48 @@ enum ReadingPlanType {
   dailyPages, // عدد صفحات يومي بدون نطاق محدد
 }
 
+/// غرض الخطة — Plan Goal/Preset
+enum PlanPreset {
+  general,       // عامة
+  hifz,          // حفظ
+  tadabbur,      // تدبر
+  revision,      // مراجعة
+  baqarahBlessing // بركة البقرة
+}
+
 /// موديل خطة القراءة — Reading Plan Model
 class ReadingPlan {
   final String id;
   final String title;
   final ReadingPlanType type;
+  final PlanPreset preset;
   final DateTime startDate;
   final DateTime? targetDate;
   final int? targetDays;
   final int startPage;
   final int endPage;
+  final int? startJuz;
+  final int? endJuz;
   int pagesRead;
-  final List<int> reminderTimes; // Hours of the day (e.g., [8, 20])
+  final List<int> reminderTimes;
+  final int iconIndex;
   bool isActive;
 
   ReadingPlan({
     required this.id,
     required this.title,
     required this.type,
+    this.preset = PlanPreset.general,
     required this.startDate,
     this.targetDate,
     this.targetDays,
     this.startPage = 1,
     this.endPage = 604,
+    this.startJuz,
+    this.endJuz,
     this.pagesRead = 0,
     this.reminderTimes = const [],
+    this.iconIndex = 0,
     this.isActive = true,
   });
 
@@ -62,13 +79,17 @@ class ReadingPlan {
     'id': id,
     'title': title,
     'type': type.index,
+    'preset': preset.index,
     'startDate': startDate.toIso8601String(),
     'targetDate': targetDate?.toIso8601String(),
     'targetDays': targetDays,
     'startPage': startPage,
     'endPage': endPage,
+    'startJuz': startJuz,
+    'endJuz': endJuz,
     'pagesRead': pagesRead,
     'reminderTimes': reminderTimes,
+    'iconIndex': iconIndex,
     'isActive': isActive,
   };
 
@@ -76,13 +97,17 @@ class ReadingPlan {
     id: json['id'],
     title: json['title'],
     type: ReadingPlanType.values[json['type']],
+    preset: PlanPreset.values[json['preset'] ?? 0],
     startDate: DateTime.parse(json['startDate']),
     targetDate: json['targetDate'] != null ? DateTime.parse(json['targetDate']) : null,
     targetDays: json['targetDays'],
     startPage: json['startPage'] ?? 1,
     endPage: json['endPage'] ?? 604,
+    startJuz: json['startJuz'],
+    endJuz: json['endJuz'],
     pagesRead: json['pagesRead'] ?? 0,
     reminderTimes: List<int>.from(json['reminderTimes'] ?? []),
+    iconIndex: json['iconIndex'] ?? 0,
     isActive: json['isActive'] ?? true,
   );
 }

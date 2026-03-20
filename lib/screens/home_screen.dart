@@ -816,7 +816,6 @@ class _ArabesquePatternPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 0.5;
     for (double i = 0; i < size.width; i += 50) {
       for (double j = 0; j < size.height; j += 50) {
         final center = Offset(i, j);

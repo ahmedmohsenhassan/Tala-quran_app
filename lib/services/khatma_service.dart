@@ -110,6 +110,51 @@ class KhatmaService {
     return prefs.getInt(_completedCountKey) ?? 0;
   }
 
+  /// الحصول على الخطط الجاهزة — Get pre-configured plan presets
+  static List<ReadingPlan> getPresets() {
+    final now = DateTime.now();
+    return [
+      ReadingPlan(
+        id: 'preset_hifz',
+        title: 'ختمة الحفظ',
+        type: ReadingPlanType.fullQuran,
+        preset: PlanPreset.hifz,
+        startDate: now,
+        targetDays: 90, // Intensive
+        iconIndex: 1, // Gold
+      ),
+      ReadingPlan(
+        id: 'preset_tadabbur',
+        title: 'ختمة التدبر',
+        type: ReadingPlanType.fullQuran,
+        preset: PlanPreset.tadabbur,
+        startDate: now,
+        targetDays: 180, // Slow/Deep
+        iconIndex: 2, // Brown/Leather
+      ),
+      ReadingPlan(
+        id: 'preset_revision',
+        title: 'ختمة المراجعة',
+        type: ReadingPlanType.fullQuran,
+        preset: PlanPreset.revision,
+        startDate: now,
+        targetDays: 30, // Fast
+        iconIndex: 3, // Red/Active
+      ),
+      ReadingPlan(
+        id: 'preset_baqarah',
+        title: 'بركة البقرة',
+        type: ReadingPlanType.customRange,
+        preset: PlanPreset.baqarahBlessing,
+        startDate: now,
+        startPage: 2,
+        endPage: 49,
+        targetDays: 3, // Very intensive
+        iconIndex: 4, // Green/Special
+      ),
+    ];
+  }
+
   /// تاريخ الختمات — Get history
   static Future<List<Map<String, dynamic>>> getHistory() async {
     final prefs = await SharedPreferences.getInstance();

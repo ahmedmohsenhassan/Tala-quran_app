@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import 'theme_settings_screen.dart';
 import 'notification_settings_screen.dart';
+import 'premium_settings_screen.dart';
 import '../services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 
@@ -79,6 +80,21 @@ class SettingsTab extends StatelessWidget {
                         subtitle: 'واجهة مبسطة وألوان زاهية مخصصة للأطفال',
                         value: kidsMode.isKidsModeActive,
                         onChanged: (val) => kidsMode.toggleKidsMode(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildSectionTitle('الإعدادات المتقدمة'),
+                  const SizedBox(height: 16),
+                  _buildSettingsCard(
+                    icon: Icons.settings_suggest_rounded,
+                    title: 'خيارات ذكية ونظام',
+                    subtitle: 'تخصيص تجربة القراءة، تحسين البطارية، وإعدادات متقدمة',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PremiumSettingsScreen()),
                       );
                     },
                   ),

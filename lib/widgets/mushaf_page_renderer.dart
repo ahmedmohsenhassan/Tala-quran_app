@@ -316,7 +316,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
   }
 
   Widget _buildSurahHeader(String name) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
       height: 48, // Must fit exactly 1 line of the 15-line grid
       child: CustomPaint(
@@ -384,71 +384,80 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     final bool shouldJustify = words.length > 2;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Row(
-          mainAxisAlignment: shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
-          textDirection: TextDirection.rtl,
-          children: words.map((w) {
-            final verseKey = w['verse_key'] as String;
-            final parts = verseKey.split(':');
-            final sNum = int.parse(parts[0]);
-            final ayahNum = int.parse(parts[1]);
+      width: 420, // Match the outer container width
+      alignment: Alignment.center,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight, // Maintain RTL feel
+        child: Container(
+          width: 420, // Force the FittedBox to think the child is this wide
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(
+            mainAxisAlignment: shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
+            textDirection: TextDirection.rtl,
+            children: words.map((w) {
+              final verseKey = w['verse_key'] as String;
+              final parts = verseKey.split(':');
+              final sNum = int.parse(parts[0]);
+              final ayahNum = int.parse(parts[1]);
 
-            bool isHighlighted = widget.highlightedSurah == sNum && widget.highlightedAyah == ayahNum;
-            final bool isEnd = w['is_last_word'] == true || _isLastWordOfVerse(w, words);
+              bool isHighlighted = widget.highlightedSurah == sNum && widget.highlightedAyah == ayahNum;
+              final bool isEnd = w['is_last_word'] == true || _isLastWordOfVerse(w, words);
 
-            // DETECT & REMOVE REPEATED AYAH END SYMBOLS FROM FONT
-            String cleanText = w['text_uthmani'] ?? "";
-            // Remove the character \u06DD (End of Ayah) if present in font data
-            // Also common to have \uFD3E \uFD3F (Ornate Parentheses) for numbers
-            cleanText = cleanText.replaceAll(RegExp(r'[\u06DD\uFD3E\uFD3F0-9\u0660-\u0669]'), '').trim();
+              // DETECT & REMOVE REPEATED AYAH END SYMBOLS FROM FONT
+              String cleanText = w['text_uthmani'] ?? "";
+              // Remove the character \u06DD (End of Ayah) if present in font data
+              // Also common to have \uFD3E \uFD3F (Ornate Parentheses) for numbers
+              cleanText = cleanText.replaceAll(RegExp(r'[\u06DD\uFD3E\uFD3F0-9\u0660-\u0669]'), '').trim();
 
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              textDirection: TextDirection.rtl,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    if (widget.onAyahTapped != null) {
-                      widget.onAyahTapped!(sNum, ayahNum);
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    padding: const EdgeInsets.symmetric(horizontal: 1),
-                    decoration: BoxDecoration(
-                      color: isHighlighted ? AppColors.gold.withValues(alpha: 0.22) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Opacity(
-                      opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
-                      child: Text(
-                        cleanText,
-                        style: widget.fontFamily == ThemeService.fontAmiri 
-                          ? GoogleFonts.amiri(
-                              fontSize: widget.fontSize, // UNIFIED FONT SIZE (26 default)
-                              color: _textColor,
-                              fontWeight: FontWeight.w500,
-                              height: 1.1,
-                            )
-                          : TextStyle(
-                              fontFamily: widget.fontFamily,
-                              fontSize: widget.fontSize,
-                              color: _textColor,
-                              height: 1.1,
-                            ),
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                textDirection: TextDirection.rtl,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (widget.onAyahTapped != null) {
+                        widget.onAyahTapped!(sNum, ayahNum);
+                      }
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      padding: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: isHighlighted ? AppColors.gold.withValues(alpha: 0.22) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Opacity(
+                        opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
+                        child: Text(
+                          cleanText,
+                          style: widget.fontFamily == ThemeService.fontAmiri 
+                            ? GoogleFonts.amiri(
+                                fontSize: widget.fontSize, // UNIFIED FONT SIZE (26 default)
+                                color: _textColor,
+                                fontWeight: FontWeight.w500,
+                                height: 1.1,
+                              )
+                            : TextStyle(
+                                fontFamily: widget.fontFamily,
+                                fontSize: widget.fontSize,
+                                color: _textColor,
+                                height: 1.1,
+                              ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (isEnd) ...[
-                  const SizedBox(width: 4),
-                  _buildAyahEndMark(ayahNum),
+                  if (isEnd) ...[
+                    const SizedBox(width: 4),
+                    _buildAyahEndMark(ayahNum),
+                  ],
                 ],
-              ],
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         ),
+      ),
     );
   }
 
@@ -508,8 +517,8 @@ class _PageFramePainter extends CustomPainter {
     final bool is1422 = edition == ThemeService.editionMadina1422;
     final bool isWarsh = edition == ThemeService.editionWarsh;
 
-    final double p = 14.0; 
-    final double p2 = 22.0;
+    const double p = 14.0; 
+    const double p2 = 22.0;
 
     // 1. Shadow Layer for Depth
     final shadowPaint = Paint()
@@ -548,7 +557,7 @@ class _PageFramePainter extends CustomPainter {
 
     final cornerSize = isWarsh ? 70.0 : 55.0;
     
-    _drawPremiumCorner(canvas, Offset(p, p), cornerSize, accentPaint, isTop: true, isLeft: true);
+    _drawPremiumCorner(canvas, const Offset(p, p), cornerSize, accentPaint, isTop: true, isLeft: true);
     _drawPremiumCorner(canvas, Offset(size.width - p, p), cornerSize, accentPaint, isTop: true, isLeft: false);
     _drawPremiumCorner(canvas, Offset(p, size.height - p), cornerSize, accentPaint, isTop: false, isLeft: true);
     _drawPremiumCorner(canvas, Offset(size.width - p, size.height - p), cornerSize, accentPaint, isTop: false, isLeft: false);
@@ -590,7 +599,11 @@ class _PageFramePainter extends CustomPainter {
        final double r = i.isEven ? radius : radius * 0.5;
        final x = center.dx + r * cos(angle);
        final y = center.dy + r * sin(angle);
-       if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+       if (i == 0) {
+         path.moveTo(x, y);
+       } else {
+         path.lineTo(x, y);
+       }
     }
     path.close();
     canvas.drawPath(path, paint..style = PaintingStyle.fill);
@@ -714,8 +727,11 @@ class _FooterOrnamentPainter extends CustomPainter {
     for (int i = 0; i < petals; i++) {
        double angle = (i * 360 / petals) * pi / 180;
        double r = (i % 2 == 0) ? size.width/2.2 : size.width/2.4;
-       if (i == 0) path.moveTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
-       else path.lineTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
+       if (i == 0) {
+         path.moveTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
+       } else {
+         path.lineTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
+       }
     }
     path.close();
     
