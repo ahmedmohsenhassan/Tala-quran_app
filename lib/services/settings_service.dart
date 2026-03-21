@@ -10,6 +10,8 @@ class SettingsService {
   static const String _showDecorationsKey = 'settings_show_decorations';
   static const String _updateNotificationsKey = 'settings_update_notifications';
   static const String _languageKey = 'settings_language';
+  static const String _scrollSpeedKey = 'settings_scroll_speed';
+  static const String _showProgressInNotificationsKey = 'settings_show_progress_in_notifications';
 
   /// إبقاء الشاشة مضاءة — Keep screen on (Default: true)
   static Future<bool> getKeepScreenOn() async {
@@ -88,5 +90,29 @@ class SettingsService {
     await prefs.remove(_showDecorationsKey);
     await prefs.remove(_updateNotificationsKey);
     await prefs.remove(_languageKey);
+    await prefs.remove(_scrollSpeedKey);
+    await prefs.remove(_showProgressInNotificationsKey);
+  }
+
+  /// سرعة التمرير التلقائي — Scroll Speed (Default: 1.0)
+  static Future<double> getScrollSpeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_scrollSpeedKey) ?? 1.0;
+  }
+
+  static Future<void> setScrollSpeed(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_scrollSpeedKey, value);
+  }
+
+  /// إظهار التقدم في الإشعارات — Show Progress in Notifications (Default: true)
+  static Future<bool> getShowProgressInNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_showProgressInNotificationsKey) ?? true;
+  }
+
+  static Future<void> setShowProgressInNotifications(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showProgressInNotificationsKey, value);
   }
 }

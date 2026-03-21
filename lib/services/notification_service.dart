@@ -42,36 +42,34 @@ class NotificationService {
 
   /// تهيئة النظام — Initialize notification system
   static Future<void> initialize() async {
-    // Initialize timezone (using latest_10y for faster startup)
+    // 🚀 تهيئة التوقيت والاشعارات في الخلفية (Background)
+    // Initialize in background to avoid blocking splash
     tz_data.initializeTimeZones();
-    try {
-      final timezoneName = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(timezoneName));
-    } catch (_) {
-      tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
-    }
+    
+    // Don't await these synchronously - let them run
+    Future.microtask(() async {
+      try {
+        final timezoneName = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(timezoneName));
+      } catch (_) {
+        tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
+      }
 
-    // Initialize notification plugin
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidSettings);
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const initSettings = InitializationSettings(android: androidSettings);
 
-    await _notifPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
-    );
+      await _notifPlugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationTapped,
+      );
 
-    // Request permissions (Android 13+)
-    await _notifPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
-
-    // Load verse database
-    await _loadVerseDb();
-
-    // Schedule notifications based on saved settings
-    await _rescheduleAll();
+      // Load verse database and schedule
+      await _loadVerseDb();
+      await _rescheduleAll();
+      
+      // Auto-refresh from internet (silent)
+      await refreshVerseDb();
+    });
   }
 
   /// معالجة الضغط على الإشعار — Handle notification tap
@@ -97,12 +95,11 @@ class NotificationService {
   static Future<void> refreshVerseDb() async {
     try {
       final dio = Dio();
-      // يمكن تغيير الرابط لاحقاً إلى Firebase أو GitHub Gist
       final response = await dio.get(
         'https://raw.githubusercontent.com/ahmedmohsenhassan/tala-quran-data/main/notification_verses.json',
         options: Options(
-          receiveTimeout: const Duration(seconds: 10),
-          validateStatus: (status) => status != null && (status < 500), // Handle 404 manually
+          receiveTimeout: const Duration(seconds: 5), // Reduced timeout
+          validateStatus: (status) => status != null, 
         ),
       );
 
@@ -111,31 +108,17 @@ class NotificationService {
             ? json.decode(response.data)
             : response.data;
 
-        // Compare versions
         final currentVersion = _verseDb?['version'] ?? 0;
         final newVersion = newData['version'] ?? 0;
 
         if (newVersion > currentVersion) {
           _verseDb = newData;
-          // Save to local storage for persistence
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(
-              'verse_db_cache', json.encode(newData));
-          debugPrint('Verse DB updated to version $newVersion');
+          await prefs.setString('verse_db_cache', json.encode(newData));
         }
-      } else if (response.statusCode == 404) {
-        debugPrint('Verse DB not found on server (404) - Using local/cached version');
       }
-    } catch (e) {
-      if (e is! DioException || e.response?.statusCode != 404) {
-        debugPrint('Verse DB refresh failed: $e');
-      }
-      // Try loading from cache
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString('verse_db_cache');
-      if (cached != null && _verseDb == null) {
-        _verseDb = json.decode(cached);
-      }
+    } catch (_) {
+      // Fail silently for network errors to avoid jank
     }
   }
 

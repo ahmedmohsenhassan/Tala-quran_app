@@ -102,6 +102,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // Highlighting state
   int? _activeAyah;
   int? _tappedAyah; // New: to track specifically tapped ayah
+  String? _highlightedWordLocation; // 🎯 New for Phase 64
   bool _isSanctuaryMode = false;
   
   // Optimization
@@ -252,6 +253,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     final font = await ThemeService.getThemeFont();
     final edition = await ThemeService.getMushafEdition();
 
+    final method = await SettingsService.getReadingMethod();
+    
     if (mounted) {
       setState(() {
         _currentTheme = theme;
@@ -259,6 +262,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         _translationFontSize = tSize;
         _selectedFont = font;
         _selectedEdition = edition;
+        _isVerticalMode = method == ReadingMethod.scroll;
       });
     }
   }
@@ -338,15 +342,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   }
 
   Future<void> _navigateToAyah(int surah, int ayah) async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     
     // Find the page number for this (surah, ayah)
-    // We start from the surah's initial page and search forwards
     int targetPage = QuranPageHelper.getPageForSurah(surah);
     
     try {
-      // Simple search: load pages until we find one containing our (surah, ayah)
-      // Most surahs are short, Al-Baqarah is the longest (~50 pages)
       bool found = false;
       for (int p = targetPage; p <= 604; p++) {
         final verses = await _quranService.getVersesByPage(p);
@@ -361,13 +363,24 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
           break;
         }
         
-        // If we hit another surah without finding the ayah, something is wrong
         final pageSurah = QuranPageHelper.getSurahForPage(p);
         if (pageSurah > surah) break; 
       }
       
       if (mounted) {
-        _pageController.jumpToPage(targetPage - 1);
+        // 🚀 إصلاح: التأكد من ربط الـ Controller قبل القفز (Safety Fix)
+        // Ensure controller is attached before jumping
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(targetPage - 1);
+        } else {
+          // Fallback: Use post-frame if not yet attached
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(targetPage - 1);
+            }
+          });
+        }
+
         setState(() {
           _currentPage = targetPage;
           _activeAyah = ayah;
@@ -377,7 +390,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         _loadPageData(targetPage, isBackground: true);
         _recordPageVisit(targetPage);
         
-        // If not found (fallback), at least we went to the surah start
         if (!found) {
            debugPrint('⚠️ Ayah $surah:$ayah not found in precision search, landed on Surah start page $targetPage');
         }
@@ -487,8 +499,12 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                 if (mounted) {
                                   setState(() {
                                     _activeAyah = ayah;
+                                    _highlightedWordLocation = null; // Reset word highlight
                                   });
                                 }
+                              },
+                              onWordChanged: (loc) {
+                                if (mounted) setState(() => _highlightedWordLocation = loc);
                               },
                               onMemorizationModeChanged: (isBlurring) {
                                 if (mounted) {
@@ -501,6 +517,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                 setState(() {
                                   _showAudioPlayer = false;
                                   _activeAyah = null;
+                                  _highlightedWordLocation = null; // Reset
                                   _isMemorizationMode = false;
                                   _tappedAyah = null; // Reset tapped ayah
                                 });
@@ -928,6 +945,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       pageNumber: pageNumber,
       highlightedSurah: QuranPageHelper.getSurahForPage(pageNumber),
       highlightedAyah: _activeAyah,
+      highlightedWordLocation: _highlightedWordLocation, // 🎯 New for Phase 64
       isMemorizationMode: _isMemorizationMode,
       theme: _currentTheme,
       onAyahTapped: (surah, ayah) => _handleAyahTap(surah, ayah),
@@ -991,10 +1009,14 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   // زر وضع القراءة (Vertical vs Horizontal)
                   _PremiumIconButton(
                     icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
-                    onPressed: () {
+                    onPressed: () async {
+                      final newMode = !_isVerticalMode;
                       setState(() {
-                         _isVerticalMode = !_isVerticalMode;
+                         _isVerticalMode = newMode;
                       });
+                      await SettingsService.setReadingMethod(
+                        newMode ? ReadingMethod.scroll : ReadingMethod.pages
+                      );
                       HapticFeedback.mediumImpact();
                     },
                   ),

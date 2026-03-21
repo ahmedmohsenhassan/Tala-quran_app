@@ -8,15 +8,17 @@ import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
 import '../services/ayah_sync_service.dart';
 import '../utils/quran_page_helper.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/recitation_sync_service.dart'; // 🎙️ New for Phase 64
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// ويدجت مشغّل الصوت الخاصة بصفحات المصحف
 /// Audio player specific to the Mushaf page view
 class MushafAudioPlayer extends StatefulWidget {
   final int pageNumber;
   final int? initialAyah;
-  final Function(int surah, int ayah) onAyahChanged;
+   final Function(int surah, int ayah) onAyahChanged;
+  final Function(String location)? onWordChanged; // 🎯 New for word highlighting
   final ValueChanged<bool>? onMemorizationModeChanged;
   final VoidCallback onClose;
 
@@ -25,6 +27,7 @@ class MushafAudioPlayer extends StatefulWidget {
     required this.pageNumber,
     this.initialAyah,
     required this.onAyahChanged,
+    this.onWordChanged,
     this.onMemorizationModeChanged,
     required this.onClose,
   });
@@ -49,6 +52,11 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
 
   // Stream Subscriptions
   StreamSubscription? _playerStateSub;
+  StreamSubscription? _positionSub; // 🎯 High-frequency sync
+  
+  // Word sync data
+  final RecitationSyncService _syncService = RecitationSyncService();
+  List<Map<String, dynamic>> _currentAyahSegments = [];
 
   @override
   void initState() {
@@ -72,12 +80,24 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       }
     });
 
+    // 🎯 Listen to audio position for word sync
+    _positionSub = _audioService.positionStream.listen((pos) {
+      if (_currentAyahSegments.isNotEmpty && widget.onWordChanged != null) {
+        final wordIdx = _syncService.findActiveWordIndex(pos.inMilliseconds, _currentAyahSegments);
+        if (wordIdx != null) {
+          final location = '$_currentSurah:$_currentAyah:$wordIdx';
+          widget.onWordChanged!(location);
+        }
+      }
+    });
+
     _initPlayer();
   }
 
   @override
   void dispose() {
     _playerStateSub?.cancel();
+    _positionSub?.cancel(); // 🎯 Stop sync listener
     _audioService.stop().catchError((e) => debugPrint('Error stopping: $e'));
     super.dispose();
   }
@@ -138,6 +158,14 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     );
 
     widget.onAyahChanged(surah, ayah);
+    
+    // 🎯 Fetch timestamps for the new Ayah (Phase 64)
+    if (_selectedReciter != null) {
+       _syncService.getVerseTimestamps(7, '$surah:$ayah').then((segments) {
+         if (mounted) setState(() => _currentAyahSegments = segments);
+       });
+    }
+
     await _audioService.playFromUrl(url);
   }
 

@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/quran_text_service.dart';
 import '../services/theme_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
+import '../services/download_service.dart';
+import 'dart:io';
+import '../services/ayah_info_service.dart'; // 🎯 New for Phase 63
 
 class MushafPageRenderer extends StatefulWidget {
   final int pageNumber;
@@ -17,6 +20,7 @@ class MushafPageRenderer extends StatefulWidget {
   final double fontSize;
   final String fontFamily;
   final String edition;
+  final String? highlightedWordLocation; // 🎙️ For word-by-word sync
   final PageController? pageController;
 
   const MushafPageRenderer({
@@ -30,6 +34,7 @@ class MushafPageRenderer extends StatefulWidget {
     this.fontSize = 24.0,
     this.fontFamily = ThemeService.fontAmiri,
     this.edition = ThemeService.editionMadina1405,
+    this.highlightedWordLocation,
     this.pageController,
   });
 
@@ -43,7 +48,11 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
   bool _isLoading = true;
   late TransformationController _transformationController;
   bool _isZoomed = false;
-  Drag? _drag;
+  File? _localImage;
+  final DownloadService _downloadService = DownloadService();
+  final AyahInfoService _ayahInfoService = AyahInfoService();
+  Map<String, List<Rect>> _ayahRects = {};
+  bool _isDownloading = false; // 📥 New for Phase 64
 
   @override
   void initState() {
@@ -84,9 +93,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     setState(() => _isLoading = true);
     try {
       final data = await _quranService.getPageWords(widget.pageNumber);
+      final localImg = await _downloadService.getLocalPageImage(widget.pageNumber);
+      final rects = await _ayahInfoService.getPageAyahMap(widget.pageNumber);
+      
       if (mounted) {
         setState(() {
           _pageData = data;
+          _localImage = localImg;
+          _ayahRects = rects;
           _isLoading = false;
         });
       }
@@ -129,7 +143,10 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
       return Center(
         child: Text(
           'تعذر تحميل الصفحة المستندة للنصوص',
-          style: GoogleFonts.amiri(color: AppColors.textMuted),
+          style: GoogleFonts.amiri(
+            color: AppColors.textMuted,
+            fontSize: 16,
+          ),
         ),
       );
     }
@@ -167,91 +184,106 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
             ),
           ),
           
-          // 2. Interactive Main Text Content (Zoom & Pan support)
+          // 2. Interactive Main Content (Image or Text + Interactive Layer)
           Positioned.fill(
-            child: GestureDetector(
-              onHorizontalDragStart: (details) {
-                if (!_isZoomed && widget.pageController != null) {
-                  _drag = widget.pageController!.position.drag(details, () {
-                    _drag = null;
-                  });
-                }
-              },
-              onHorizontalDragUpdate: (details) {
-                if (!_isZoomed && _drag != null) {
-                  _drag!.update(details);
-                }
-              },
-              onHorizontalDragEnd: (details) {
-                if (!_isZoomed && _drag != null) {
-                  _drag!.end(details);
-                  _drag = null;
-                }
-              },
-              child: LayoutBuilder(
-                builder: (context, constraints) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
-                  child: InteractiveViewer(
-                    transformationController: _transformationController,
-                    onInteractionUpdate: _onInteractionUpdate,
-                    minScale: 1.0,
-                    maxScale: 4.0,
-                    panEnabled: _isZoomed,
-                    scaleEnabled: true,
-                    boundaryMargin: const EdgeInsets.all(20),
-                    child: Container(
-                      width: 420,
-                      height: 720, // Strict 15 lines * 48px
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: List.generate(15, (index) {
-                          int lineIdx = index + 1;
-                          List<Map<String, dynamic>> lineWords = lines[lineIdx] ?? [];
-                          
-                          int? headerForSurah;
-                          bool isBismillah = false;
-                          
-                          for (var verse in _pageData) {
-                            final vKey = verse['verse_key'] as String;
-                            final parts = vKey.split(':');
-                            final sNum = int.parse(parts[0]);
-                            final ayahNum = int.parse(parts[1]);
-                            
-                            final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
-                            if (wordsInVerse.isEmpty) continue;
-                            final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
-                            
-                            if (ayahNum == 1) {
-                              if (sNum == 1 || sNum == 9) {
-                                if (lineIdx == firstLineOfAyah - 1) {
-                                  headerForSurah = sNum;
-                                }
-                              } else {
-                                if (lineIdx == firstLineOfAyah - 2) {
-                                  headerForSurah = sNum;
-                                } else if (lineIdx == firstLineOfAyah - 1) {
-                                  isBismillah = true;
+            child: LayoutBuilder(
+              builder: (context, constraints) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+                child: InteractiveViewer(
+                  transformationController: _transformationController,
+                  onInteractionUpdate: _onInteractionUpdate,
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  panEnabled: _isZoomed,
+                  scaleEnabled: true,
+                  boundaryMargin: const EdgeInsets.all(20),
+                  child: Stack(
+                    children: [
+                      // A. Visual Layer (Local Image or Fallback Text)
+                      if (_localImage != null)
+                        Positioned.fill(
+                          child: LayoutBuilder(
+                            builder: (context, imgConstraints) {
+                              return Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: Image.file(
+                                      _localImage!,
+                                      fit: BoxFit.contain,
+                                      filterQuality: FilterQuality.high,
+                                    ),
+                                  ),
+                                  // 🎯 Interactivity Layer for Image mode
+                                  _buildImageInteractions(imgConstraints.biggest),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      
+                      // B. Interactive Layer (Visible if no image, Transparent if image exists)
+                      IgnorePointer(
+                        ignoring: _localImage != null && _ayahRects.isNotEmpty,
+                        child: Container(
+                          width: 420,
+                          height: 720,
+                          padding: EdgeInsets.zero,
+                          color: _localImage != null ? Colors.transparent : null,
+                          child: Column(
+                            children: List.generate(15, (index) {
+                              int lineIdx = index + 1;
+                              List<Map<String, dynamic>> lineWords = lines[lineIdx] ?? [];
+                              
+                              int? headerForSurah;
+                              bool isBismillah = false;
+                              
+                              for (var verse in _pageData) {
+                                final vKey = verse['verse_key'] as String;
+                                final parts = vKey.split(':');
+                                final sNum = int.parse(parts[0]);
+                                final ayahNum = int.parse(parts[1]);
+                                
+                                final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
+                                if (wordsInVerse.isEmpty) continue;
+                                final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
+                                
+                                if (ayahNum == 1) {
+                                  if (sNum == 1 || sNum == 9) {
+                                    if (lineIdx == firstLineOfAyah - 1) {
+                                      headerForSurah = sNum;
+                                    }
+                                  } else {
+                                    if (lineIdx == firstLineOfAyah - 2) {
+                                      headerForSurah = sNum;
+                                    } else if (lineIdx == firstLineOfAyah - 1) {
+                                      isBismillah = true;
+                                    }
+                                  }
                                 }
                               }
-                            }
-                          }
-
-                          Widget lineWidget;
-                          if (headerForSurah != null) {
-                            lineWidget = _buildSurahHeader(QuranPageHelper.surahNames[headerForSurah - 1]);
-                          } else if (isBismillah) {
-                            lineWidget = _buildBismillah();
-                          } else {
-                            lineWidget = _buildLine(lineWords);
-                          }
-
-                          return SizedBox(
-                            height: 48, // 720 / 15
-                            child: lineWidget,
-                          );
-                        }),
+  
+                              Widget lineWidget;
+                              if (headerForSurah != null) {
+                                lineWidget = _localImage != null 
+                                  ? const SizedBox.shrink() 
+                                  : _buildSurahHeader(QuranPageHelper.surahNames[headerForSurah - 1]);
+                              } else if (isBismillah) {
+                                lineWidget = _localImage != null
+                                  ? const SizedBox.shrink()
+                                  : _buildBismillah();
+                              } else {
+                                lineWidget = _buildLine(lineWords, isTransparent: _localImage != null);
+                              }
+  
+                              return SizedBox(
+                                height: 48,
+                                child: lineWidget,
+                              );
+                            }),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -268,7 +300,72 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
             ),
           ),
 
-          // 4. Top Header (Juz & Surah Name)
+          // 5. Download Prompt (Overlay)
+          if (_localImage == null)
+            Positioned(
+              bottom: 80,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _isDownloading ? null : () async {
+                    setState(() => _isDownloading = true);
+                    try {
+                      await _downloadService.downloadPage(widget.pageNumber);
+                      
+                      // 🔄 Periodic check for download completion
+                      int checks = 0;
+                      Timer.periodic(const Duration(seconds: 2), (timer) async {
+                        checks++;
+                        final file = await _downloadService.getLocalPageImage(widget.pageNumber);
+                        if (file != null || checks > 15) {
+                          timer.cancel();
+                          if (mounted) {
+                            setState(() => _isDownloading = false);
+                            _loadPageData(); 
+                          }
+                        }
+                      });
+                    } catch (e) {
+                      if (mounted) setState(() => _isDownloading = false);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _isDownloading ? Colors.grey : AppColors.gold.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isDownloading ? Icons.hourglass_empty_rounded : Icons.download_rounded, 
+                          color: Colors.white, 
+                          size: 20
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isDownloading ? 'جاري التحميل...' : 'تحميل الصفحة (KFGQPC)',
+                          style: GoogleFonts.amiri(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             top: 35,
             left: 50,
@@ -376,7 +473,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     );
   }
 
-  Widget _buildLine(List<Map<String, dynamic>> words) {
+  Widget _buildLine(List<Map<String, dynamic>> words, {bool isTransparent = false}) {
     if (words.isEmpty) return const SizedBox.shrink();
 
     // Justification: Spreads words to fill 100% of the line width
@@ -415,6 +512,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                 textDirection: TextDirection.rtl,
                 children: [
                   GestureDetector(
+                    behavior: HitTestBehavior.opaque, // 🎯 Ensure it captures taps even if child is transparent
                     onTap: () {
                       if (widget.onAyahTapped != null) {
                         widget.onAyahTapped!(sNum, ayahNum);
@@ -433,15 +531,16 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                           cleanText,
                           style: widget.fontFamily == ThemeService.fontAmiri 
                             ? GoogleFonts.amiri(
-                                fontSize: widget.fontSize, // UNIFIED FONT SIZE (26 default)
-                                color: _textColor,
+                                fontSize: widget.fontSize, 
+                                color: isTransparent ? Colors.transparent : _textColor,
                                 fontWeight: FontWeight.w500,
                                 height: 1.1,
                               )
                             : TextStyle(
                                 fontFamily: widget.fontFamily,
+                                fontStyle: FontStyle.normal, // Ensure no italics from serifs
                                 fontSize: widget.fontSize,
-                                color: _textColor,
+                                color: isTransparent ? Colors.transparent : _textColor,
                                 height: 1.1,
                               ),
                         ),
@@ -499,6 +598,94 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 📐 الإحداثيات الذكية — Smart Coordinate Mapping
+  Widget _buildImageInteractions(Size viewSize) {
+    if (_ayahRects.isEmpty) return const SizedBox.shrink();
+
+    // Design size of the KFGQPC coordinates (Typical 1100x1570 or 1260x1800)
+    // We assume 1100x1570 for these DBs, but let's make it detectable or standard
+    const Size designSize = Size(1100, 1570); 
+
+    // Calculate actual image rect within the BoxFit.contain view
+    double viewAspectRatio = viewSize.width / viewSize.height;
+    double designAspectRatio = designSize.width / designSize.height;
+
+    double actualWidth, actualHeight, offsetX, offsetY;
+    if (viewAspectRatio > designAspectRatio) {
+      actualHeight = viewSize.height;
+      actualWidth = actualHeight * designAspectRatio;
+      offsetX = (viewSize.width - actualWidth) / 2;
+      offsetY = 0;
+    } else {
+      actualWidth = viewSize.width;
+      actualHeight = actualWidth / designAspectRatio;
+      offsetY = (viewSize.height - actualHeight) / 2;
+      offsetX = 0;
+    }
+
+    final double scaleX = actualWidth / designSize.width;
+    final double scaleY = actualHeight / designSize.height;
+
+    return Stack(
+      children: _ayahRects.entries.map((entry) {
+        final key = entry.key; // "surah:ayah"
+        final rects = entry.value;
+        final parts = key.split(':');
+        final sNum = int.parse(parts[0]);
+        final aNum = int.parse(parts[1]);
+
+        bool isHighlighted = widget.highlightedSurah == sNum && widget.highlightedAyah == aNum;
+
+        // 🎯 Word-by-Word data logic
+        final List<dynamic> verseWords = _pageData.firstWhere(
+          (v) => v['verse_key'] == key,
+          orElse: () => {'words': []},
+        )['words'] ?? [];
+
+        return Stack(
+          children: rects.map((r) {
+            // Find if this specific glyph/rect belongs to a word or end mark
+            final int glyphIdx = rects.indexOf(r);
+            String? glyphLocation;
+            
+            // Heuristic: mapping glyphs to words (simplified for now)
+            if (glyphIdx < verseWords.length) {
+              glyphLocation = verseWords[glyphIdx]['location'];
+            }
+
+            bool isWordHighlighted = widget.highlightedWordLocation != null && 
+                                   glyphLocation == widget.highlightedWordLocation;
+
+            // Apply scale and offset to the design rect
+            final scaledRect = Rect.fromLTRB(
+              offsetX + (r.left * scaleX),
+              offsetY + (r.top * scaleY),
+              offsetX + (r.right * scaleX),
+              offsetY + (r.bottom * scaleY),
+            );
+
+            return Positioned.fromRect(
+              rect: scaledRect,
+              child: GestureDetector(
+                onTap: () => widget.onAyahTapped?.call(sNum, aNum),
+                behavior: HitTestBehavior.opaque,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150), // FASTER for words
+                  decoration: BoxDecoration(
+                    color: isWordHighlighted
+                        ? AppColors.gold.withValues(alpha: 0.45) // DARKER for specific word
+                        : (isHighlighted ? AppColors.gold.withValues(alpha: 0.2) : Colors.transparent),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      }).toList(),
     );
   }
 }

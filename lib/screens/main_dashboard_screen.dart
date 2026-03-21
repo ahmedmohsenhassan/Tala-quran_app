@@ -131,7 +131,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8), // 🚀 تقليل قوة التغبيش لزيادة السرعة
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
             child: BottomNavigationBar(

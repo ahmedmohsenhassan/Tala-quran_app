@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'tafseer_service.dart';
 
 /// خدمة جلب نص القرآن الكريم
@@ -13,6 +15,20 @@ class QuranTextService {
   QuranTextService._internal();
 
   final Dio _dio = Dio();
+  
+  // Cache for local directory path
+  static String? _localDirPath;
+  
+  static Future<String> _getLocalPath() async {
+    if (_localDirPath != null) return _localDirPath!;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      _localDirPath = dir.path;
+      return _localDirPath!;
+    } catch (_) {
+      return '';
+    }
+  }
 
   /// البحث عن آيات تحتوي على نص معين
   /// Search for ayahs containing specific text
@@ -162,14 +178,22 @@ class QuranTextService {
   /// جلب آيات صفحة معينة مع بيانات الكلمات والأسطر (للدقة القصوى)
   /// Fetch verses for a specific page with word-level data and line numbers
   Future<List<Map<String, dynamic>>> getVersesByPage(int pageNumber) async {
-    // 1. Try local assets first (Offline-First)
+    // 1. Try local Assets first (Bundled)
     try {
       final String localData = await rootBundle.loadString('assets/mushaf/data/verses_p$pageNumber.json');
       final decoded = json.decode(localData);
       return List<Map<String, dynamic>>.from(decoded);
-    } catch (_) {
-      // Local not found, proceed to API
-    }
+    } catch (_) {}
+
+    // 2. Try Local STORAGE (Downloaded)
+    try {
+      final localPath = await _getLocalPath();
+      final file = File('$localPath/mushaf/$pageNumber/verses_p$pageNumber.json');
+      if (await file.exists()) {
+        final String content = await file.readAsString();
+        return List<Map<String, dynamic>>.from(json.decode(content));
+      }
+    } catch (_) {}
 
     try {
       final response = await _dio.get(
@@ -193,14 +217,22 @@ class QuranTextService {
   /// جلب بيانات الكلمات لصفحة معينة (للتظليل كلمة بكلمة)
   /// Fetch word-level data for a specific page (for Word-by-Word highlighting)
   Future<List<Map<String, dynamic>>> getPageWords(int pageNumber) async {
-    // 1. Try local assets first (Offline-First)
+    // 1. Try local Assets first (Bundled)
     try {
       final String localData = await rootBundle.loadString('assets/mushaf/data/words_p$pageNumber.json');
       final decoded = json.decode(localData);
       return List<Map<String, dynamic>>.from(decoded);
-    } catch (_) {
-      // Local not found, proceed to API
-    }
+    } catch (_) {}
+
+    // 2. Try Local STORAGE (Downloaded)
+    try {
+      final localPath = await _getLocalPath();
+      final file = File('$localPath/mushaf/$pageNumber/words_p$pageNumber.json');
+      if (await file.exists()) {
+        final String content = await file.readAsString();
+        return List<Map<String, dynamic>>.from(json.decode(content));
+      }
+    } catch (_) {}
 
     try {
       final response = await _dio.get(

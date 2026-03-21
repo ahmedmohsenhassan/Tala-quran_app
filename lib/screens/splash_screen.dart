@@ -99,20 +99,31 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    precacheImage(const AssetImage('assets/images/logo.png'), context);
-    precacheImage(const AssetImage('assets/images/quran_logo_premium.png'), context);
+    // 🚀 تحسين التحميل المسبق للصور (Precache)
+    Future.wait([
+      precacheImage(const AssetImage('assets/images/logo.png'), context),
+      precacheImage(const AssetImage('assets/images/quran_logo_premium.png'), context),
+    ]);
   }
 
   Future<void> _startSequence() async {
-    // Load data in parallel
-    final lastRead = await BookmarkService.getLastRead();
-    _lastReadPage = lastRead?['pageNumber'] ?? 1;
-    _currentReading = await ReadingService.getSelectedReading();
+    // 🚀 تشغيل العمليات الثقيلة بالتوازي
+    // Run heavy I/O operations in parallel
+    final results = await Future.wait([
+      BookmarkService.getLastRead(),
+      ReadingService.getSelectedReading(),
+      getApplicationDocumentsDirectory(),
+    ]);
 
-    final dir = await getApplicationDocumentsDirectory();
+    final lastRead = results[0] as Map<String, dynamic>?;
+    _lastReadPage = lastRead?['pageNumber'] ?? 1;
+    _currentReading = results[1] as String;
+    
+    final dir = results[2] as Directory;
     final folderName = _currentReading == ReadingService.hafs
         ? 'mushaf_hafs'
         : 'mushaf_warsh';
+    
     final path = Directory('${dir.path}/$folderName');
     if (await path.exists()) {
       _mushafDirPath = path.path;

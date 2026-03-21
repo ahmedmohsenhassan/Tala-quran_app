@@ -30,6 +30,8 @@ dependencies:
   wakelock_plus: ^1.5.1
   app_settings: ^7.0.0
   uuid: ^4.3.3
+  flutter_downloader: ^1.11.6
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:

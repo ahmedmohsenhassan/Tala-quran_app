@@ -18,6 +18,8 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
   bool _nightMode = true;
   bool _showDecorations = true;
   bool _updateNotifications = true;
+  bool _showProgressNotif = true;
+  double _scrollSpeed = 1.0;
   // Note: _readingMethod and _lastPageAction were removed as they were not used in the UI
 
   @override
@@ -32,14 +34,55 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
     final updateNotif = await SettingsService.getUpdateNotifications();
     final themeMode = await ThemeService.getThemeMode();
 
+    final showProgressNotif = await SettingsService.getShowProgressInNotifications();
+    final scrollSpeed = await SettingsService.getScrollSpeed();
+
     if (mounted) {
       setState(() {
         _keepScreenOn = keepOn;
         _showDecorations = showDeco;
         _updateNotifications = updateNotif;
+        _showProgressNotif = showProgressNotif;
+        _scrollSpeed = scrollSpeed;
         _nightMode = themeMode == ThemeService.dark;
       });
     }
+  }
+
+  void _showResetConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: AppColors.gold.withValues(alpha: 0.2)),
+        ),
+        title: Text('إعادة تعيين', style: GoogleFonts.amiri(color: AppColors.gold, fontWeight: FontWeight.bold)),
+        content: Text(
+          'هل أنت متأكد من رغبتك في إعادة تعيين كافة الإعدادات إلى الوضع الافتراضي؟',
+          style: GoogleFonts.amiri(color: Colors.white),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('إلغاء', style: GoogleFonts.amiri(color: Colors.white60)),
+          ),
+          TextButton(
+            onPressed: () async {
+              await SettingsService.resetAll();
+              if (!context.mounted) return;
+              Navigator.of(context).pop();
+              _loadSettings();
+            },
+            child: Text(
+              'تأكيد',
+              style: GoogleFonts.amiri(color: Colors.redAccent, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -119,6 +162,7 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
                     Icons.palette_rounded,
                     () {},
                   ),
+                  const SizedBox(height: 16),
                   
                   const SizedBox(height: 32),
                   _buildSectionHeader('إدارة الإضافات', Icons.extension_rounded),
@@ -139,6 +183,29 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
                       SettingsService.setUpdateNotifications(val);
                     },
                   ),
+                  _buildToggleTile(
+                    'إظهار التقدم في الإشعارات',
+                    'قم بتحديد هذا الاختيار إذا أردت رؤية نسبة التقدم في الختمة داخل الإشعارات',
+                    _showProgressNotif,
+                    (val) {
+                      setState(() => _showProgressNotif = val);
+                      SettingsService.setShowProgressInNotifications(val);
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+                  _buildSectionHeader('التمرير التلقائي', Icons.swap_calls_rounded),
+                  _buildSliderTile(
+                    'سرعة التمرير',
+                    'تعديل سرعة التمرير التلقائي أثناء القراءة',
+                    _scrollSpeed,
+                    0.5,
+                    3.0,
+                    (val) {
+                      setState(() => _scrollSpeed = val);
+                      SettingsService.setScrollSpeed(val);
+                    },
+                  ),
 
                   const SizedBox(height: 32),
                   _buildSectionHeader('إدارة استهلاك البطارية', Icons.battery_charging_full_rounded),
@@ -153,12 +220,9 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
                   _buildSectionHeader('الإعدادات الافتراضية', Icons.settings_backup_restore_rounded),
                   _buildSettingsTile(
                     'إعادة تعيين كافة الإعدادات',
-                    'قم بتحديد هذا الاختيار إذا أردت أن يتم تنبيهك عند وجود تحديث للتطبيق',
+                    'قم بإعادة كافة تفضيلات التطبيق إلى وضعها الأصلي',
                     Icons.refresh_rounded,
-                    () async {
-                      await SettingsService.resetAll();
-                      _loadSettings();
-                    },
+                    _showResetConfirmation,
                     isDestructive: true,
                   ),
                   const SizedBox(height: 60),
@@ -187,9 +251,9 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        background: Opacity(
+        background: const Opacity(
           opacity: 0.05,
-          child: const Icon(Icons.settings, size: 150, color: AppColors.gold),
+          child: Icon(Icons.settings, size: 150, color: AppColors.gold),
         ),
       ),
     );
@@ -299,6 +363,56 @@ class _PremiumSettingsScreenState extends State<PremiumSettingsScreen> {
             onChanged: onChanged,
             activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
             activeThumbColor: AppColors.gold,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSliderTile(String title, String subtitle, double value, double min, double max, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.amiri(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                value.toStringAsFixed(1),
+                style: GoogleFonts.outfit(
+                  color: AppColors.gold,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: GoogleFonts.amiri(
+              color: Colors.white60,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: ((max - min) * 10).toInt(),
+            activeColor: AppColors.gold,
+            inactiveColor: AppColors.gold.withValues(alpha: 0.1),
+            onChanged: onChanged,
           ),
         ],
       ),
