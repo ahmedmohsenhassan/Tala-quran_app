@@ -97,6 +97,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
       final rects = await _ayahInfoService.getPageAyahMap(widget.pageNumber);
       
       if (mounted) {
+        debugPrint('📖 Page ${widget.pageNumber}: Words=${data.length}, Rects=${rects.length}, Image=${localImg != null}');
         setState(() {
           _pageData = data;
           _localImage = localImg;
@@ -311,6 +312,9 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                   onTap: _isDownloading ? null : () async {
                     setState(() => _isDownloading = true);
                     try {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('بدء تحميل الصفحة...'))
+                      );
                       await _downloadService.downloadPage(widget.pageNumber);
                       
                       // 🔄 Periodic check for download completion

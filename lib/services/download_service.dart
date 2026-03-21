@@ -1,7 +1,8 @@
 import 'dart:io';
+import 'dart:ui';
+import 'dart:isolate';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart';
 
 /// خدمة التحميل — Download Service
 /// مسؤول عن إدارة تحميل صفحات المصحف، بيانات الإحداثيات، والتزامن الصوتي
@@ -15,10 +16,13 @@ class DownloadService {
 
   /// تهيئة محرك التحميل
   static Future<void> initialize() async {
-    await FlutterDownloader.initialize(
-      debug: kDebugMode,
-      ignoreSsl: true,
-    );
+    // Initialized in main.dart
+  }
+
+  @pragma('vm:entry-point')
+  static void callback(String id, int status, int progress) {
+    final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
+    send?.send([id, status, progress]);
   }
 
   /// تحميل سورة (صوت)

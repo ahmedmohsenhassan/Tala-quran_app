@@ -13,12 +13,15 @@ import 'mushaf_viewer_screen.dart';
 import 'search_screen.dart';
 import 'reading_plan_screen.dart';
 import 'stats_screen.dart';
+import 'smart_hifz_screen.dart';
 import '../services/reading_stats_service.dart';
 import '../services/kids_mode_service.dart';
 import '../data/rub_data.dart';
 import 'package:provider/provider.dart';
 import '../widgets/premium_painters.dart';
 import '../services/theme_service.dart';
+import '../services/daily_verse_service.dart';
+import '../widgets/ayah_share_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Map<String, dynamic>? _lastRead;
   Map<String, dynamic>? _streakData;
   Map<String, dynamic>? _statsData;
+  Map<String, dynamic>? _dailyVerse;
   late TabController _tabController;
 
   @override
@@ -44,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final lastRead = await BookmarkService.getLastRead();
     final streak = await StreakService.getStreakData();
     final stats = await ReadingStatsService.getStats();
+    final dailyVerse = await DailyVerseService.getTodayVerse();
     
     if (mounted) {
       setState(() {
@@ -55,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         };
         _streakData = streak;
         _statsData = stats;
+        _dailyVerse = dailyVerse;
       });
       final settings = await NotificationService.getSettings();
       if (settings['enabled'] == true) {
@@ -94,7 +100,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         children: [
                           const SizedBox(height: 24),
                           _buildWelcomeHeader(),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 24),
+                          if (_dailyVerse != null) ...[
+                            _buildDailyVerseCard(),
+                            const SizedBox(height: 24),
+                          ],
+                          if (_lastRead != null) ...[
+                            _buildQuranProgressSection(),
+                            const SizedBox(height: 24),
+                          ],
                           _buildQuickAccessDashboard(),
                           const SizedBox(height: 32),
                         ],
@@ -312,12 +326,311 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  // ============================================================
+  //  DAILY VERSE CARD 🌟✨
+  // ============================================================
+  Widget _buildDailyVerseCard() {
+    final verse = _dailyVerse!;
+    final body = verse['body'] as String;
+    final surah = verse['surah'] as int? ?? 0;
+    final ayah = verse['ayah'] as int? ?? 0;
+
+    return GestureDetector(
+      onTap: surah > 0
+          ? () {
+              final page = QuranPageHelper.getPageForSurah(surah);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MushafViewerScreen(initialPage: page),
+                ),
+              );
+            }
+          : null,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF0D2818),
+              AppColors.emerald.withValues(alpha: 0.15),
+              const Color(0xFF0A1F14),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.25), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.gold.withValues(alpha: 0.08),
+              blurRadius: 20,
+              spreadRadius: -5,
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Header row
+            Row(
+              children: [
+                const Text('✨', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                Text(
+                  'آية اليوم',
+                  style: GoogleFonts.amiri(
+                    color: AppColors.gold,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                if (surah > 0)
+                  GestureDetector(
+                    onTap: () {
+                      // Extract just the verse text (what's inside ﴿ ﴾)
+                      final verseText = RegExp(r'﴿(.+?)﴾').firstMatch(body)?.group(1) ?? body;
+                      // Extract surah name from body
+                      final surahRef = RegExp(r'—\s*(.+)$').firstMatch(body)?.group(1) ?? '';
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AyahShareCard(
+                            ayahText: '﴿$verseText﴾',
+                            surahName: surahRef.split(':').first.trim(),
+                            ayahNumber: ayah,
+                            surahNumber: surah,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(Icons.share_rounded, color: AppColors.gold.withValues(alpha: 0.7), size: 18),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Ornament
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildGoldLine(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Icon(Icons.auto_awesome, color: AppColors.gold.withValues(alpha: 0.4), size: 14),
+                ),
+                _buildGoldLine(),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Verse text
+            Text(
+              body,
+              style: GoogleFonts.amiri(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 18,
+                height: 1.9,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+
+            // Bottom ornament
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildGoldLine(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Icon(Icons.auto_awesome, color: AppColors.gold.withValues(alpha: 0.4), size: 14),
+                ),
+                _buildGoldLine(),
+              ],
+            ),
+
+            if (surah > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                'اضغط للقراءة في المصحف →',
+                style: GoogleFonts.amiri(
+                  color: AppColors.gold.withValues(alpha: 0.5),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoldLine() {
+    return Container(
+      width: 50,
+      height: 1,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.gold.withValues(alpha: 0.0),
+            AppColors.gold.withValues(alpha: 0.4),
+            AppColors.gold.withValues(alpha: 0.0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  //  QURAN COMPLETION PROGRESS 📊🎯✨
+  // ============================================================
+  Widget _buildQuranProgressSection() {
+    final currentPage = _lastRead!['pageNumber'] as int? ?? 1;
+    const totalPages = 604;
+    final progress = (currentPage / totalPages).clamp(0.0, 1.0);
+    final percent = (progress * 100).toInt();
+
+    // Milestone data
+    final milestones = [
+      {'page': 151, 'label': '¼', 'achieved': currentPage >= 151},
+      {'page': 302, 'label': '½', 'achieved': currentPage >= 302},
+      {'page': 453, 'label': '¾', 'achieved': currentPage >= 453},
+      {'page': 604, 'label': 'ختم', 'achieved': currentPage >= 604},
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Row(
+            children: [
+              const Text('📖', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              Text(
+                'تقدمك في القرآن',
+                style: GoogleFonts.amiri(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$percent%',
+                style: GoogleFonts.outfit(
+                  color: AppColors.gold,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Progress bar
+          Stack(
+            children: [
+              // Track
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 12,
+                  backgroundColor: Colors.white.withValues(alpha: 0.05),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    progress >= 1.0 ? AppColors.gold : AppColors.emerald,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Milestone markers
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: milestones.map((m) {
+              final achieved = m['achieved'] as bool;
+              return Column(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: achieved
+                          ? AppColors.gold.withValues(alpha: 0.2)
+                          : Colors.white.withValues(alpha: 0.03),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: achieved
+                            ? AppColors.gold
+                            : Colors.white.withValues(alpha: 0.1),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: achieved
+                          ? const Icon(Icons.check_rounded, color: AppColors.gold, size: 14)
+                          : Text(
+                              m['label'] as String,
+                              style: GoogleFonts.outfit(
+                                color: AppColors.textMuted,
+                                fontSize: 10,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'ص${m['page']}',
+                    style: GoogleFonts.outfit(
+                      color: achieved ? AppColors.gold.withValues(alpha: 0.7) : AppColors.textMuted,
+                      fontSize: 9,
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 8),
+          Text(
+            'صفحة $currentPage من $totalPages',
+            style: GoogleFonts.outfit(
+              color: AppColors.textMuted,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildQuickAccessDashboard() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       child: Row(
         children: [
+          _PremiumCardFrame(child: _buildJuzProgressCard()),
+          const SizedBox(width: 16),
+          _PremiumCardFrame(child: _buildSmartHifzCard()),
+          const SizedBox(width: 16),
           _PremiumCardFrame(child: _buildKhatmaCard()),
           const SizedBox(width: 16),
           if (_statsData != null) ...[
@@ -330,6 +643,136 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
           if (_lastRead != null) _PremiumCardFrame(child: _buildLastReadCard()),
         ],
+      ),
+    );
+  }
+
+  // ============================================================
+  //  JUZ PROGRESS RING 🏅✨
+  // ============================================================
+  Widget _buildJuzProgressCard() {
+    if (_lastRead == null) return const SizedBox();
+
+    final currentPage = _lastRead!['pageNumber'] as int? ?? 1;
+    final currentJuz = QuranPageHelper.getJuzForPage(currentPage);
+    final juzStart = QuranPageHelper.getPageForJuz(currentJuz);
+    final juzEnd = QuranPageHelper.getJuzEndPage(currentJuz);
+    final juzTotalPages = juzEnd - juzStart + 1;
+    final pagesIntoJuz = currentPage - juzStart + 1;
+    final progress = (pagesIntoJuz / juzTotalPages).clamp(0.0, 1.0);
+    final percentText = '${(progress * 100).toInt()}%';
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MushafViewerScreen(initialPage: currentPage),
+        ),
+      ).then((_) => _loadData()),
+      child: Container(
+        width: 180,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.emerald.withValues(alpha: 0.2),
+              const Color(0xFF0D2818),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              '🏅 الجزء $currentJuz',
+              style: GoogleFonts.amiri(
+                color: AppColors.gold,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 90,
+              height: 90,
+              child: CustomPaint(
+                painter: _JuzProgressPainter(
+                  progress: progress,
+                  trackColor: AppColors.gold.withValues(alpha: 0.1),
+                  progressColor: AppColors.gold,
+                ),
+                child: Center(
+                  child: Text(
+                    percentText,
+                    style: GoogleFonts.outfit(
+                      color: AppColors.gold,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '$pagesIntoJuz / $juzTotalPages صفحة',
+              style: GoogleFonts.outfit(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
+            ),
+            if (progress >= 1.0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '✨ مكتمل!',
+                style: GoogleFonts.amiri(
+                  color: AppColors.gold,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartHifzCard() {
+    return InkWell(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SmartHifzScreen()),
+      ).then((_) => _loadData()),
+      child: Container(
+        width: 180,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.gold.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.psychology_rounded, color: AppColors.gold, size: 24),
+                const SizedBox(width: 8),
+                Text('المساعد الذكي',
+                    style: GoogleFonts.amiri(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('اختبر حفظك الآن',
+                style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 13)),
+          ],
+        ),
       ),
     );
   }
@@ -826,4 +1269,59 @@ class _ArabesquePatternPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => true;
+}
+
+/// 🏅 Juz Progress Ring Painter
+class _JuzProgressPainter extends CustomPainter {
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+
+  _JuzProgressPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 6;
+    const startAngle = -math.pi / 2; // Start from top
+    const sweepTotal = 2 * math.pi * 0.75; // 270° sweep
+
+    // Track
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal,
+      false,
+      trackPaint,
+    );
+
+    // Progress arc
+    final progressPaint = Paint()
+      ..color = progressColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal * progress,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_JuzProgressPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

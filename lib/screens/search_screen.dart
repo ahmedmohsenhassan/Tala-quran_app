@@ -5,6 +5,7 @@ import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
 import '../services/quran_text_service.dart';
+import '../services/search_database_service.dart';
 import 'mushaf_viewer_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -50,7 +51,8 @@ class _SearchScreenState extends State<SearchScreen> {
         }).toList();
       });
     } else {
-      setState(() => _isLoading = true);
+      if (!_isLoading && _ayahResults.isEmpty) setState(() => _isLoading = true);
+      
       final results = await _quranService.searchAyahs(query);
       if (mounted) {
         setState(() {
@@ -257,12 +259,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
                 ),
                 child: ListTile(
-                  title: Text(
-                    ayah['text'],
-                    style: GoogleFonts.amiri(
-                        color: AppColors.textPrimary, fontSize: 18),
-                    textAlign: TextAlign.right,
-                  ),
+                  title: _buildHighlightedText(ayah['text'], _searchController.text),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
@@ -294,6 +291,53 @@ class _SearchScreenState extends State<SearchScreen> {
         'لا توجد نتائج',
         style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 18),
       ),
+    );
+  }
+
+  /// 🎨 مُبرز الكلمات الذهبي (Tashkeel-Agnostic Word Highlighter)
+  Widget _buildHighlightedText(String uthmaniText, String query) {
+    if (query.isEmpty) {
+      return Text(
+        uthmaniText,
+        style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+        textAlign: TextAlign.right,
+      );
+    }
+
+    final queryClean = SearchDatabaseService().removeTashkeel(query.trim());
+    if (queryClean.isEmpty) {
+      return Text(
+        uthmaniText,
+        style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+        textAlign: TextAlign.right,
+      );
+    }
+
+    final words = uthmaniText.split(' ');
+    final List<TextSpan> spans = [];
+
+    for (var i = 0; i < words.length; i++) {
+      final String word = words[i];
+      final String wordClean = SearchDatabaseService().removeTashkeel(word);
+
+      // Check if word contains the query, or query contains the word (robust partial matching)
+      if (wordClean.isNotEmpty && (wordClean.contains(queryClean) || queryClean.contains(wordClean))) {
+        spans.add(TextSpan(
+          text: '$word ',
+          style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.bold),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: '$word ',
+          style: GoogleFonts.amiri(color: AppColors.textPrimary, fontSize: 18),
+        ));
+      }
+    }
+
+    return RichText(
+      textAlign: TextAlign.right,
+      textDirection: TextDirection.rtl,
+      text: TextSpan(children: spans),
     );
   }
 }

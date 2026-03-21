@@ -26,9 +26,9 @@ class _AITajweedSheetState extends State<AITajweedSheet> {
   void _toggleRecording() async {
     if (_isRecording) {
       setState(() => _isRecording = false);
-      final path = await _aiService.stopRecording();
-      if (path != null) {
-        _analyze(path);
+      final transcribedText = await _aiService.stopRecording();
+      if (transcribedText != null) {
+        _analyze(transcribedText);
       }
     } else {
       final success = await _aiService.startRecording();
@@ -38,13 +38,13 @@ class _AITajweedSheetState extends State<AITajweedSheet> {
     }
   }
 
-  void _analyze(String path) async {
+  void _analyze(String transcribedText) async {
     setState(() {
       _isAnalyzing = true;
       _results = null;
     });
 
-    final results = await _aiService.analyzeRecitation(path, widget.surah, widget.ayah);
+    final results = await _aiService.analyzeRecitation(transcribedText, widget.surah, widget.ayah);
 
     if (mounted) {
       setState(() {

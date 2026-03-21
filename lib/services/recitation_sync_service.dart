@@ -11,14 +11,13 @@ class RecitationSyncService {
   RecitationSyncService._internal();
 
   final Dio _dio = Dio();
-  static const String _baseUrl = 'https://api.quran.com/api/v4/audio/reciters';
 
   /// جلب مواقيت الكلمات لآية معينة — Fetch Word Timestamps for a Verse
   /// [reciterId]: معرف القاري (مثلاً 7 للعفاسي)
   /// [verseKey]: مفتاح الآية (مثلاً "1:1")
   Future<List<Map<String, dynamic>>> getVerseTimestamps(int reciterId, String verseKey) async {
     final prefs = await SharedPreferences.getInstance();
-    final cacheKey = 'timestamps_${reciterId}_$verseKey';
+    final cacheKey = 'timestamps_\${reciterId}_\$verseKey';
 
     // 1. محاولة الجلب من التخزين المحلي (Cache)
     final cachedData = prefs.getString(cacheKey);
@@ -29,28 +28,30 @@ class RecitationSyncService {
     // 2. الجلب من API إذا لم تكن موجودة
     try {
       final response = await _dio.get(
-        '$_baseUrl/$reciterId/timestamp',
-        queryParameters: {'verse_key': verseKey},
+        'https://api.quran.com/api/v4/recitations/\$reciterId/by_ayah/\$verseKey',
+        queryParameters: {'fields': 'segments'},
       );
 
       if (response.statusCode == 200) {
-        final List timestamps = response.data['timestamp']['segments'];
-        
-        // تحويل البيانات لشكل مبسط (word_index, start_time, end_time)
-        final formatted = timestamps.map((s) {
-          return {
-            'word_index': s[0], // Word position in inverse
-            'start': s[1],      // Miliseconds
-            'end': s[2],        // Miliseconds
-          };
-        }).toList();
+        final List audioFiles = response.data['audio_files'];
+        if (audioFiles.isNotEmpty && audioFiles.first['segments'] != null) {
+          final List timestamps = audioFiles.first['segments'];
+          
+          final formatted = timestamps.map((s) {
+            return {
+              'word_index': s[0] + 1, // Word position (1-based for UI matching)
+              'start': s[2],          // Milliseconds
+              'end': s[3],            // Milliseconds
+            };
+          }).toList();
 
-        // 3. حفظ في الكاش
-        await prefs.setString(cacheKey, json.encode(formatted));
-        return List<Map<String, dynamic>>.from(formatted);
+          // 3. حفظ في الكاش
+          await prefs.setString(cacheKey, json.encode(formatted));
+          return List<Map<String, dynamic>>.from(formatted);
+        }
       }
     } catch (e) {
-      debugPrint('❌ Error fetching timestamps for $verseKey: $e');
+      debugPrint('❌ Error fetching timestamps for \$verseKey: \$e');
     }
     return [];
   }

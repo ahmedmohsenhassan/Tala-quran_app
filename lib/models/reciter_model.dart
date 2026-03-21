@@ -30,7 +30,7 @@ class Reciter {
           subTitle: 'AlAfasy',
           imageUrl:
               'https://static.qurancdn.com/images/reciters/6/mishary-rashid-alafasy-profile.jpeg',
-          baseUrl: 'https://everyayah.com/data/Mishary_Rashid_Alafasy_128kbps/',
+          baseUrl: 'https://everyayah.com/data/Alafasy_128kbps/',
           identifier: 'ar.alafasy',
           serverUrl: 'https://server8.mp3quran.net/afs/',
         ),

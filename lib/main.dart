@@ -13,6 +13,7 @@ import 'services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'widgets/error_boundary.dart';
 import 'services/download_service.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -22,6 +23,11 @@ final ValueNotifier<String> colorNotifier = ValueNotifier(ThemeService.colorEmer
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 🎯 FlutterDownloader Background Callback
+  // Must be static and registered before runApp
+  await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
+  FlutterDownloader.registerCallback(DownloadService.callback);
 
   // 🚀 تحسين سرعة التشغيل باستخدام التحميل المتوازي
   // Optimize startup using parallel loading

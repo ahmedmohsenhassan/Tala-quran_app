@@ -18,7 +18,7 @@ class MushafAudioPlayer extends StatefulWidget {
   final int pageNumber;
   final int? initialAyah;
    final Function(int surah, int ayah) onAyahChanged;
-  final Function(String location)? onWordChanged; // 🎯 New for word highlighting
+  final Function(String? location)? onWordChanged; // 🎯 New for word highlighting
   final ValueChanged<bool>? onMemorizationModeChanged;
   final VoidCallback onClose;
 
@@ -76,6 +76,11 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
           } else {
             _playNextAyah();
           }
+        }
+        
+        // Clear word highlight if paused or stopped
+        if (!state.playing && widget.onWordChanged != null) {
+           widget.onWordChanged!(null);
         }
       }
     });
@@ -174,8 +179,8 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       setState(() => _currentAyahIndex++);
       _playCurrentAyah();
     } else {
-      // End of page - could notify MushafViewer to turn page?
-      // For now just stop
+      // End of page - clear highlight and stop
+      if (widget.onWordChanged != null) widget.onWordChanged!(null);
       setState(() => _isPlaying = false);
     }
   }

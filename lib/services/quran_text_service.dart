@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'tafseer_service.dart';
+import 'search_database_service.dart'; // 🎯 New for Phase 69 Offline Search
 
 /// خدمة جلب نص القرآن الكريم
 /// Service to fetch Quranic text from API or local JSON assets
@@ -30,28 +31,16 @@ class QuranTextService {
     }
   }
 
-  /// البحث عن آيات تحتوي على نص معين
-  /// Search for ayahs containing specific text
+  /// البحث عن آيات تحتوي على نص معين (نسخة الأوفلاين السريعة جدًا)
+  /// Search for ayahs containing specific text (Blazing fast offline SQLite)
   Future<List<Map<String, dynamic>>> searchAyahs(String query) async {
     try {
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/search',
-        queryParameters: {'q': query, 'language': 'ar', 'size': 20},
-      );
-
-      if (response.statusCode == 200) {
-        final List results = response.data['search']['results'];
-        return results.map((r) {
-          return {
-            "surahNumber": r['verse_key'].split(':')[0],
-            "verseNumber": r['verse_key'].split(':')[1],
-            "text": r['text'],
-            "verseKey": r['verse_key'],
-          };
-        }).toList();
-      }
-      return [];
+      final dbService = SearchDatabaseService();
+      // Initialize the database in the background if it's the first run
+      await dbService.database; 
+      return await dbService.search(query);
     } catch (e) {
+      debugPrint('❌ [QuranTextService] Search Error: $e');
       return [];
     }
   }
