@@ -22,6 +22,8 @@ import '../widgets/premium_painters.dart';
 import '../services/theme_service.dart';
 import '../services/daily_verse_service.dart';
 import '../widgets/ayah_share_card.dart';
+import 'package:showcaseview/showcaseview.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,11 +39,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Map<String, dynamic>? _dailyVerse;
   late TabController _tabController;
 
+  final GlobalKey _continueReadingKey = GlobalKey();
+  final GlobalKey _progressKey = GlobalKey();
+  final GlobalKey _quickAccessKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadData();
+    
+    // Feature Discovery Tour
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      final isHomeTourCompleted = prefs.getBool('isHomeTourCompleted') ?? false;
+      
+      if (!isHomeTourCompleted && mounted) {
+        await prefs.setBool('isHomeTourCompleted', true);
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            ShowCaseWidget.of(context).startShowCase([
+              _continueReadingKey,
+              _progressKey,
+              _quickAccessKey,
+            ]);
+          }
+        });
+      }
+    });
   }
 
   Future<void> _loadData() async {
@@ -506,8 +531,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       {'page': 604, 'label': 'ختم', 'achieved': currentPage >= 604},
     ];
 
-    return Container(
-      width: double.infinity,
+    return Showcase(
+      key: _progressKey,
+      title: 'تقدمك في الختمة 📊',
+      description: 'تابع شريط الإنجاز وتتبع كم صفحة أنهيت من كتاب الله.',
+      tooltipBackgroundColor: AppColors.cardBackground,
+      textColor: Colors.white,
+      child: Container(
+        width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
@@ -618,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -818,8 +850,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final double progress = stats['dailyGoalProgress'] ?? 0.0;
     final int todayPages = stats['todayPages'] ?? 0;
 
-    return InkWell(
-      onTap: () => Navigator.push(
+    return Showcase(
+      key: _quickAccessKey,
+      title: 'إحصائياتك الذكية ⚡',
+      description: 'لوحة تحكمك الكاملة: خريطة حرارية وإحصائيات مفصلة لأدائك.',
+      tooltipBackgroundColor: AppColors.cardBackground,
+      textColor: Colors.white,
+      child: InkWell(
+        onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const StatsScreen()),
       ).then((_) => _loadData()),
@@ -866,12 +904,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
+    ),
     );
   }
 
   Widget _buildLastReadCard() {
-    return InkWell(
-      onTap: () {
+    return Showcase(
+      key: _continueReadingKey,
+      title: 'إكمال القراءة 📖',
+      description: 'بضغطة واحدة، عُد إلى نفس الصفحة التي توقفت عندها.',
+      tooltipBackgroundColor: AppColors.cardBackground,
+      textColor: Colors.white,
+      child: InkWell(
+        onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -905,6 +950,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
+    ),
     );
   }
 

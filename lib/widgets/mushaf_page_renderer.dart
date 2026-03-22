@@ -43,6 +43,8 @@ class MushafPageRenderer extends StatefulWidget {
 }
 
 class _MushafPageRendererState extends State<MushafPageRenderer> {
+  static const bool showDebugBoxes = false; // 🐛 Debug Toggle
+
   final QuranTextService _quranService = QuranTextService();
   List<Map<String, dynamic>> _pageData = [];
   bool _isLoading = true;
@@ -224,10 +226,10 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                       
                       // B. Interactive Layer (Visible if no image, Transparent if image exists)
                       IgnorePointer(
-                        ignoring: _localImage != null && _ayahRects.isNotEmpty,
+                        ignoring: _localImage != null && _ayahRects.isNotEmpty && !showDebugBoxes,
                         child: Container(
-                          width: 420,
-                          height: 720,
+                          width: constraints.maxWidth - 80,
+                          height: constraints.maxHeight - 120,
                           padding: EdgeInsets.zero,
                           color: _localImage != null ? Colors.transparent : null,
                           child: Column(
@@ -273,7 +275,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                                   ? const SizedBox.shrink()
                                   : _buildBismillah();
                               } else {
-                                lineWidget = _buildLine(lineWords, isTransparent: _localImage != null);
+                                lineWidget = _buildLine(lineWords, constraints.maxWidth - 80, isTransparent: _localImage != null);
                               }
   
                               return SizedBox(
@@ -477,7 +479,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     );
   }
 
-  Widget _buildLine(List<Map<String, dynamic>> words, {bool isTransparent = false}) {
+  Widget _buildLine(List<Map<String, dynamic>> words, double maxWidth, {bool isTransparent = false}) {
     if (words.isEmpty) return const SizedBox.shrink();
 
     // Justification: Spreads words to fill 100% of the line width
@@ -485,13 +487,13 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     final bool shouldJustify = words.length > 2;
 
     return Container(
-      width: 420, // Match the outer container width
+      width: maxWidth, // Match the outer container width
       alignment: Alignment.center,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.centerRight, // Maintain RTL feel
         child: Container(
-          width: 420, // Force the FittedBox to think the child is this wide
+          width: maxWidth, // Force the FittedBox to think the child is this wide
           padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Row(
             mainAxisAlignment: shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
@@ -679,10 +681,13 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150), // FASTER for words
                   decoration: BoxDecoration(
-                    color: isWordHighlighted
+                    color: showDebugBoxes 
+                        ? Colors.redAccent.withValues(alpha: 0.3)
+                        : (isWordHighlighted
                         ? AppColors.gold.withValues(alpha: 0.45) // DARKER for specific word
-                        : (isHighlighted ? AppColors.gold.withValues(alpha: 0.2) : Colors.transparent),
+                        : (isHighlighted ? AppColors.gold.withValues(alpha: 0.2) : Colors.transparent)),
                     borderRadius: BorderRadius.circular(2),
+                    border: showDebugBoxes ? Border.all(color: Colors.red, width: 1.0) : null,
                   ),
                 ),
               ),

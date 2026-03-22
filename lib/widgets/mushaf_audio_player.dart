@@ -17,9 +17,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 class MushafAudioPlayer extends StatefulWidget {
   final int pageNumber;
   final int? initialAyah;
-   final Function(int surah, int ayah) onAyahChanged;
+  final Function(int surah, int ayah) onAyahChanged;
   final Function(String? location)? onWordChanged; // 🎯 New for word highlighting
   final ValueChanged<bool>? onMemorizationModeChanged;
+  final VoidCallback? onEndOfPage; // 🔄 Continuous Auto-Scroll
   final VoidCallback onClose;
 
   const MushafAudioPlayer({
@@ -29,6 +30,7 @@ class MushafAudioPlayer extends StatefulWidget {
     required this.onAyahChanged,
     this.onWordChanged,
     this.onMemorizationModeChanged,
+    this.onEndOfPage,
     required this.onClose,
   });
 
@@ -171,7 +173,13 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
        });
     }
 
-    await _audioService.playFromUrl(url);
+    final surahName = QuranPageHelper.surahNames[surah - 1];
+    await _audioService.playAudioWithMeta(
+      url: url,
+      id: '$surah:$ayah',
+      title: 'سورة $surahName - آية $ayah',
+      artist: _selectedReciter!.name,
+    );
   }
 
   void _playNextAyah() {
@@ -179,9 +187,13 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       setState(() => _currentAyahIndex++);
       _playCurrentAyah();
     } else {
-      // End of page - clear highlight and stop
+      // End of page - clear highlight and trigger auto-scroll if provided
       if (widget.onWordChanged != null) widget.onWordChanged!(null);
-      setState(() => _isPlaying = false);
+      if (widget.onEndOfPage != null) {
+        widget.onEndOfPage!();
+      } else {
+        setState(() => _isPlaying = false);
+      }
     }
   }
 

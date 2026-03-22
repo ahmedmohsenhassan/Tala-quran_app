@@ -75,7 +75,7 @@ class SearchDatabaseService {
 
   /// التحقق مما إذا كانت قاعدة البيانات فارغة وتعبئتها إذا لزم الأمر
   Future<void> _checkAndPopulateData(Database db) async {
-    final count = await Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM ayahs'));
+    final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM ayahs'));
     
     // إجمالي عدد الآيات في القرآن هو 6236
     if (count != null && count >= 6236) {

@@ -500,7 +500,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                   // العنوان
                   Row(
                     children: [
-                      Icon(Icons.auto_awesome_rounded, color: AppColors.gold, size: 22),
+                      const Icon(Icons.auto_awesome_rounded, color: AppColors.gold, size: 22),
                       const SizedBox(width: 8),
                       Text(
                         'خاطرة روحانية ✨',
@@ -553,10 +553,9 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                               ayahNumber: ayahNumber,
                               note: controller.text.trim(),
                             );
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _loadData();
-                            }
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
+                            _loadData();
                           },
                           icon: const Icon(Icons.save_rounded, size: 20),
                           label: Text(
@@ -585,10 +584,9 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                               ayahNumber: ayahNumber,
                               note: '',
                             );
-                            if (mounted) {
-                              Navigator.pop(context);
-                              _loadData();
-                            }
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
+                            _loadData();
                           },
                           icon: const Icon(Icons.delete_outline_rounded,
                               color: Colors.redAccent, size: 24),

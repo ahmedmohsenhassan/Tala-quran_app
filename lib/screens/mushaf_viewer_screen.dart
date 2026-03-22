@@ -450,6 +450,24 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     }
   }
 
+  void _autoTurnToNextPage() {
+    if (_currentPage < 604) {
+      if (_pageController.hasClients) {
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 800),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _tappedAyah = null; // Ensure new page starts playing from its first Ayah
+        });
+      }
+    } else {
+      if (mounted) setState(() => _showAudioPlayer = false);
+    }
+  }
+
   void _toggleFullscreen() {
     setState(() => _showBars = !_showBars);
     if (_showBars) {
@@ -562,6 +580,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                     _isMemorizationMode = isBlurring;
                                   });
                                 }
+                              },
+                              onEndOfPage: () {
+                                _autoTurnToNextPage();
                               },
                               onClose: () {
                                 setState(() {
@@ -1625,7 +1646,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                   final pageNum = _bookmarkedPages.elementAt(index);
                                   final surahName = QuranPageHelper.getSurahNameForPage(pageNum);
                                   return ListTile(
-                                    leading: const Icon(Icons.bookmark_rounded, color: _richGold),
+                                    leading: Icon(Icons.bookmark_rounded, color: _richGold),
                                     title: Text(
                                       'سورة $surahName',
                                       style: GoogleFonts.amiri(color: Colors.white, fontSize: 18),
@@ -2007,8 +2028,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                             note: note,
                           );
                         }
-                        if (mounted) Navigator.pop(context);
-                        ScaffoldMessenger.of(this.context).showSnackBar(
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('✅ تم حفظ الخاطرة على الآية $ayah'),
                             duration: const Duration(seconds: 2),

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tala_quran_app/screens/main_dashboard_screen.dart';
+import 'package:tala_quran_app/screens/mushaf_viewer_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/bookmark_service.dart';
 import '../services/reading_service.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================================================
 //  Premium Colors for Splash
@@ -156,17 +158,49 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-      
-      // تبسيط عملية التنقل لضمان استقرار الـ Hero Transitions
-      // Simplify navigation to ensure stable Hero Transitions
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MainDashboardScreen(
-            autoOpenPage: _lastReadPage,
+
+      // Check for first launch
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
+
+      if (isFirstLaunch) {
+        // Mark as launched
+        await prefs.setBool('isFirstLaunch', false);
+        
+        // Push Home screen to the stack, then push Mushaf on top of it!
+        // This makes sure when they press "back", they go to the Home Screen.
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
+        );
+        
+        // Push Mushaf (Surah Al-Fatihah, Page 1) immediately on top with no animation
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    const MushafViewerScreen(initialPage: 1),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+          }
+        });
+      } else {
+        // Normal Launch
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MainDashboardScreen(
+              autoOpenPage: _lastReadPage,
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 

@@ -652,10 +652,9 @@ class _StatsScreenState extends State<StatsScreen> {
                       child: ElevatedButton.icon(
                         onPressed: () async {
                           await ReadingStatsService.setDailyGoal(sliderValue.round());
-                          if (mounted) {
-                            Navigator.pop(context);
-                            _loadData(); // Refresh stats
-                          }
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          _loadData(); // Refresh stats
                         },
                         icon: const Icon(Icons.check_rounded, size: 20),
                         label: Text(

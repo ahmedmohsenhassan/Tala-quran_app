@@ -14,6 +14,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'widgets/error_boundary.dart';
 import 'services/download_service.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -23,6 +24,12 @@ final ValueNotifier<String> colorNotifier = ValueNotifier(ThemeService.colorEmer
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.ahmedmohsen.talaquran.audio',
+    androidNotificationChannelName: 'Tala Quran Recitation',
+    androidNotificationOngoing: true,
+  );
   
   // 🎯 FlutterDownloader Background Callback
   // Must be static and registered before runApp

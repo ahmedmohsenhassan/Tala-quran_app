@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:showcaseview/showcaseview.dart';
 import '../utils/app_colors.dart';
 import 'home_screen.dart';
 import 'search_screen.dart';
@@ -62,8 +63,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
+      child: ShowCaseWidget(
+        builder: (context) => Scaffold(
+          backgroundColor: AppColors.background,
         body: AnimatedBuilder(
           animation: _pageController,
           builder: (context, child) {
@@ -105,6 +107,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
         ),
         extendBody: true, // Allows body to scroll behind the floating nav bar
         bottomNavigationBar: _buildPremiumBottomNavBar(),
+      ),
       ),
     );
   }
