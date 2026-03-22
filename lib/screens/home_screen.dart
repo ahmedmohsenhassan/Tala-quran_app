@@ -58,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         await prefs.setBool('isHomeTourCompleted', true);
         Future.delayed(const Duration(milliseconds: 800), () {
           if (mounted) {
+            // ignore: deprecated_member_use
             ShowCaseWidget.of(context).startShowCase([
               _continueReadingKey,
               _progressKey,

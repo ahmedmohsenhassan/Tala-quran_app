@@ -63,6 +63,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
+      // ignore: deprecated_member_use
       child: ShowCaseWidget(
         builder: (context) => Scaffold(
           backgroundColor: AppColors.background,

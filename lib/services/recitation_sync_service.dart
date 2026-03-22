@@ -17,7 +17,8 @@ class RecitationSyncService {
   /// [verseKey]: مفتاح الآية (مثلاً "1:1")
   Future<List<Map<String, dynamic>>> getVerseTimestamps(int reciterId, String verseKey) async {
     final prefs = await SharedPreferences.getInstance();
-    final cacheKey = 'timestamps_\${reciterId}_\$verseKey';
+    const String prefix = 'timestamps_';
+    final cacheKey = '$prefix${reciterId}_$verseKey';
 
     // 1. محاولة الجلب من التخزين المحلي (Cache)
     final cachedData = prefs.getString(cacheKey);

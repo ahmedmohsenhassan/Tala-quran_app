@@ -134,15 +134,29 @@ class _SplashScreenState extends State<SplashScreen>
       if (await oldPath.exists()) _mushafDirPath = oldPath.path;
     }
 
+    if (!mounted) return;
+
     // === Phase 1: Logo ===
     _logoController.forward();
+    
+    // Start pre-caching the first page image while logo is shown
+    final pageStr = _lastReadPage.toString().padLeft(3, '0');
+    final firstPageImage = AssetImage('assets/mushaf/page$pageStr.png');
+    final precacheFuture = precacheImage(firstPageImage, context).catchError((_) {});
+
     await Future.delayed(const Duration(milliseconds: 2000));
     if (!mounted) return;
 
     // === Phase 2: Book appears ===
     setState(() => _phase = 1);
     _bookZoomController.forward();
-    await Future.delayed(const Duration(milliseconds: 1800));
+    
+    // Wait for the book to zoom in AND for the first page to be ready
+    await Future.wait([
+      Future.delayed(const Duration(milliseconds: 1800)),
+      precacheFuture,
+    ]);
+    
     if (!mounted) return;
 
     // === Phase 3: Cover opens slowly ===
