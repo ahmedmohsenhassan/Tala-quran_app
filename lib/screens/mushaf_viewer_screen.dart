@@ -78,11 +78,15 @@ Color get _parchmentDark {
 /// A realistic, premium 3D Quran viewer experience
 class MushafViewerScreen extends StatefulWidget {
   final int initialPage;
+  final int? initialAyah; // 🔗 New for Phase 112
+  final int? initialSurah; // 🔗 New for Phase 112
   final String? sharedKhatmaId;
 
   const MushafViewerScreen({
     super.key, 
     this.initialPage = 1,
+    this.initialAyah,
+    this.initialSurah,
     this.sharedKhatmaId,
   });
 
@@ -163,6 +167,11 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     super.initState();
     _currentPage = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage - 1);
+    
+    if (widget.initialAyah != null) {
+      _activeAyah = widget.initialAyah;
+      _showAudioPlayer = true; // Auto-open player for the target ayah
+    }
     
     // 📡 Initialize Collaborative Features
     _firebaseKhatma = Provider.of<FirebaseKhatmaService>(context, listen: false);
@@ -697,9 +706,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       const SnackBar(
         content: Row(
           children: [
-            Icon(Icons.mic, color: Colors.white),
+            Icon(Icons.auto_awesome, color: Colors.white),
             SizedBox(width: 8),
-            Text('جاري الاستماع... اقرأ بضع كلمات من الآية'),
+            Text('جاري التعرف (أوفلاين)... اقرأ بضع كلمات'),
           ],
         ),
         duration: Duration(seconds: 4),
@@ -714,7 +723,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     if (result == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('لم يتم التعرف على الآية. حاول التحدث بوضوح أكثر، وتأكد من الاتصال بالإنترنت.'),
+          content: Text('لم يتم التعرف على الآية. حاول التحدث بوضوح أكثر (تعمل 100% بدون إنترنت).'),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -1343,52 +1352,43 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     ),
                   ),
 
-                  const SizedBox(width: 12),
-
+                  const SizedBox(width: 8),
+                  
                   // معلومات السورة والجزء
-                  GestureDetector(
-                    onTap: _showNavigationPicker,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _richGold.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _richGold.withValues(alpha: 0.1), width: 1),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _currentSurahName,
-                                style: GoogleFonts.amiri(
-                                  color: primaryColor,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [
-                                    Shadow(
-                                      color: primaryColor.withValues(alpha: 0.3),
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: _showNavigationPicker,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _richGold.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _richGold.withValues(alpha: 0.1), width: 1),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _currentSurahName,
+                              style: GoogleFonts.amiri(
+                                color: primaryColor,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                height: 1.2,
                               ),
-                              const SizedBox(width: 4),
-                              Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor.withValues(alpha: 0.6), size: 20),
-                            ],
-                          ),
-                          Text(
-                            'الجزء $_currentJuz',
-                            style: GoogleFonts.amiri(
-                              color: _lightGold.withValues(alpha: 0.7),
-                              fontSize: 13,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                        ],
+                            Text(
+                              'جزء $_currentJuz',
+                              style: GoogleFonts.amiri(
+                                color: _lightGold.withValues(alpha: 0.7),
+                                fontSize: 11,
+                                height: 1.0,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -1459,58 +1459,66 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               ),
               child: Row(
                 children: [
-                  // رقم الصفحة مزخرف
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _richGold.withValues(alpha: 0.4),
-                        width: 1,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'صفحة $_currentPage',
-                      style: GoogleFonts.amiri(
-                        color: primaryColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // Hizb info badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _richGold.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'حزب ${((_currentPage - 1) ~/ 10 + 1).clamp(1, 60)}',
-                      style: GoogleFonts.amiri(
-                        color: _lightGold.withValues(alpha: 0.7),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // Juz info badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _richGold.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'جزء $_currentJuz',
-                      style: GoogleFonts.amiri(
-                        color: _lightGold.withValues(alpha: 0.7),
-                        fontSize: 12,
+                  // Scrollable info badges for bottom bar
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // رقم الصفحة مزخرف
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: _richGold.withValues(alpha: 0.4),
+                                width: 1,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              'صفحة $_currentPage',
+                              style: GoogleFonts.amiri(
+                                color: primaryColor,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Hizb info badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _richGold.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'حزب ${((_currentPage - 1) ~/ 10 + 1).clamp(1, 60)}',
+                              style: GoogleFonts.amiri(
+                                color: _lightGold.withValues(alpha: 0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Juz info badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _richGold.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'جزء $_currentJuz',
+                              style: GoogleFonts.amiri(
+                                color: _lightGold.withValues(alpha: 0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

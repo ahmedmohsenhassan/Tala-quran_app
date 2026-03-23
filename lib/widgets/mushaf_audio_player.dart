@@ -9,8 +9,11 @@ import '../models/reciter_model.dart';
 import '../services/ayah_sync_service.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/recitation_sync_service.dart'; // 🎙️ New for Phase 64
+import '../services/quran_resource_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/hifz_testing_service.dart';
+import 'hifz_test_result_dialog.dart';
 
 /// ويدجت مشغّل الصوت الخاصة بصفحات المصحف
 /// Audio player specific to the Mushaf page view
@@ -59,6 +62,11 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   // Word sync data
   final RecitationSyncService _syncService = RecitationSyncService();
   List<Map<String, dynamic>> _currentAyahSegments = [];
+
+  // Hifz Testing State
+  final HifzTestingService _hifzService = HifzTestingService();
+  bool _isHifzTesting = false;
+  bool _isHifzAnalyzing = false;
 
   @override
   void initState() {
@@ -245,15 +253,30 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _currentSurah > 0 
-                      ? 'سورة ${QuranPageHelper.surahNames[_currentSurah - 1]} - آية $_currentAyah'
-                      : 'تلاوة الآية $_currentAyah',
-                    style: GoogleFonts.amiri(
-                      color: AppColors.gold,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        _currentSurah > 0 
+                          ? 'سورة ${QuranPageHelper.surahNames[_currentSurah - 1]} - آية $_currentAyah'
+                          : 'تلاوة الآية $_currentAyah',
+                        style: GoogleFonts.amiri(
+                          color: AppColors.gold,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FutureBuilder<bool>(
+                        future: _selectedReciter != null ? _audioService.isSurahDownloaded(_selectedReciter!.id, _currentSurah) : Future.value(false),
+                        builder: (context, snapshot) {
+                          final isDown = snapshot.data ?? false;
+                          if (isDown) {
+                            return const Icon(Icons.offline_pin_rounded, color: Colors.green, size: 16);
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ],
                   ),
                   Text(
                     'صفحة ${widget.pageNumber}',
@@ -264,9 +287,45 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                   ),
                 ],
               ),
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.grey),
-                onPressed: widget.onClose,
+              Row(
+                children: [
+                  if (_selectedReciter != null)
+                    FutureBuilder<bool>(
+                      future: _audioService.isSurahDownloaded(_selectedReciter!.id, _currentSurah),
+                      builder: (context, snapshot) {
+                        final isDown = snapshot.data ?? false;
+                        if (isDown) return const SizedBox.shrink();
+                        return IconButton(
+                          tooltip: 'تحميل السورة كاملة',
+                          icon: const Icon(Icons.download_for_offline_outlined, color: AppColors.gold, size: 20),
+                          onPressed: () async {
+                            final name = QuranPageHelper.surahNames[_currentSurah - 1];
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('بدأ تحميل سورة $name... 📥')),
+                            );
+                            try {
+                              await QuranResourceService().downloadSurahAudio(
+                                reciter: _selectedReciter!,
+                                surahNumber: _currentSurah,
+                                surahName: name,
+                              );
+                              if (context.mounted) setState(() {}); // Refresh
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('❌ فشل التحميل: $e')),
+                                );
+                              }
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    onPressed: widget.onClose,
+                  ),
+                ],
               ),
             ],
           ),
@@ -358,8 +417,71 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
               ),
             ],
           ),
+          
+          if (_isMemorizationMode) ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isHifzAnalyzing ? null : _toggleHifzTest,
+                icon: _isHifzAnalyzing 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Icon(_isHifzTesting ? Icons.stop_circle : Icons.psychology, color: Colors.white),
+                label: Text(
+                  _isHifzAnalyzing ? 'جاري التحليل (أوفلاين)...' : (_isHifzTesting ? 'توقف للتقييم' : 'اختبر حفظي لهذه الآية'),
+                  style: GoogleFonts.amiri(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isHifzTesting ? Colors.red : AppColors.gold,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 4,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  void _toggleHifzTest() async {
+    if (_isHifzTesting) {
+      if (!mounted) return;
+      setState(() {
+        _isHifzTesting = false;
+        _isHifzAnalyzing = true;
+      });
+
+      final transcription = await _hifzService.finishHifzTest();
+      if (transcription != null) {
+        final result = await _hifzService.evaluateRecitation(transcription, _currentSurah, _currentAyah);
+        if (mounted) {
+          setState(() => _isHifzAnalyzing = false);
+          _showHifzResult(result);
+        }
+      } else {
+        if (mounted) {
+          setState(() => _isHifzAnalyzing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('لم يتم التقاط صوت. حاول القراءة بصوت مسموع.'))
+          );
+        }
+      }
+    } else {
+      final success = await _hifzService.startHifzTest();
+      if (success && mounted) {
+        setState(() => _isHifzTesting = true);
+        HapticFeedback.heavyImpact();
+      }
+    }
+  }
+
+  void _showHifzResult(HifzTestResult result) {
+    showDialog(
+      context: context,
+      builder: (context) => HifzTestResultDialog(result: result),
     );
   }
 

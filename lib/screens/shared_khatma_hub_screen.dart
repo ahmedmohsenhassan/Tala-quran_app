@@ -139,7 +139,7 @@ class SharedKhatmaHubScreen extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'بواسطة: \${khatma.adminName}',
+                        'بواسطة: ${khatma.adminName}',
                         style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                       ),
                     ],
@@ -157,13 +157,13 @@ class SharedKhatmaHubScreen extends StatelessWidget {
                     const Icon(Icons.people_rounded, color: AppColors.gold, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      '\${khatma.participants.length} مشارك',
+                      '${khatma.participants.length} مشارك',
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ],
                 ),
                 Text(
-                  '\${(progress * 100).toInt()}% منجز',
+                  '${(progress * 100).toInt()}% منجز',
                   style: const TextStyle(color: AppColors.gold, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ],

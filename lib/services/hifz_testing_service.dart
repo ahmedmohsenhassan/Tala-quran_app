@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'hifz_database_service.dart';
+import 'quran_database_service.dart';
 
 class HifzTestingService {
   static final HifzTestingService _instance = HifzTestingService._internal();
@@ -10,7 +10,6 @@ class HifzTestingService {
   HifzTestingService._internal();
 
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final Dio _dio = Dio();
   final HifzDatabaseService _dbService = HifzDatabaseService();
   bool _isInit = false;
   String _currentTranscription = "";
@@ -63,21 +62,15 @@ class HifzTestingService {
   /// Evaluates the recitation against the actual Quran text, saves the score, and returns the analysis.
   Future<HifzTestResult> evaluateRecitation(String transcribedText, int surah, int ayah) async {
     try {
-      // 1. Fetch exact Uthmani text from API
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/verses/by_key/$surah:$ayah',
-        queryParameters: {
-          'fields': 'text_simple',
-        },
-      );
-
-      if (response.statusCode != 200) throw Exception('API failed');
+      // 1. 🔥 جلب النص من قاعدة البيانات المحلية (100% Offline)
+      final verse = await QuranDatabaseService().getVerse(surah, ayah);
+      if (verse == null) throw Exception('Verse not found in DB');
       
-      final verseData = response.data['verse'];
-      final targetText = verseData['text_simple'] as String;
+      final targetText = verse['text'] as String;
 
-      debugPrint('🎯 Target Ayah (Hifz): $targetText');
+      debugPrint('🎯 Target Ayah (Hifz Local): $targetText');
       debugPrint('🗣️ Spoken Text (Hifz): $transcribedText');
+
 
       // 2. Perform normalized word matching and grading
       final result = _gradeRecitation(targetText, transcribedText, surah, ayah);
@@ -92,7 +85,7 @@ class HifzTestingService {
       return HifzTestResult(
         scorePercentage: 0.0,
         wordDetails: [
-          HifzWordDetail(word: "تعذر التقييم", isCorrect: false, feedback: "تأكد من اتصالك بالإنترنت")
+          HifzWordDetail(word: "تعذر التقييم", isCorrect: false, feedback: "حدث خطأ غير متوقع في المحرك المحلي.")
         ],
       );
     }

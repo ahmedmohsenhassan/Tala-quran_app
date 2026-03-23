@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'quran_database_service.dart';
 
 class RecitationRecognitionService {
   static final RecitationRecognitionService _instance = RecitationRecognitionService._internal();
@@ -9,7 +9,6 @@ class RecitationRecognitionService {
   RecitationRecognitionService._internal();
 
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final Dio _dio = Dio();
   bool _isInit = false;
 
   Future<RecognitionResult?> recognizeAyah() async {
@@ -63,43 +62,28 @@ class RecitationRecognitionService {
 
       debugPrint('✅ Transcribed Speech: $recognizedText');
 
-      // 4. Fuzzy Search via Quran.com API
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/search',
-        queryParameters: {
-          'q': recognizedText,
-          'size': 1, // We only need the top match
-          'language': 'ar',
-        },
-      );
+      // 4. 🔥 المحرك المحلي القوي (100% Offline)
+      // نستخدم محرك FTS5 المحلي للبحث عن التطابق
+      final searchResults = await QuranDatabaseService().searchVerses(recognizedText);
 
-      final data = response.data;
-      if (data != null && data['search'] != null && data['search']['results'] != null) {
-        final results = data['search']['results'] as List;
-        if (results.isNotEmpty) {
-          final bestMatch = results[0];
-          
-          final verseKey = bestMatch['verse_key'] as String;
-          final parts = verseKey.split(':');
-          final surah = int.parse(parts[0]);
-          final ayah = int.parse(parts[1]);
-          final textHtml = bestMatch['text'] as String;
+      if (searchResults.isNotEmpty) {
+        final bestMatch = searchResults[0];
+        
+        final surah = int.parse(bestMatch['surahNumber']);
+        final ayah = int.parse(bestMatch['verseNumber']);
+        final textClean = bestMatch['text'] as String;
 
-          // Quran.com search wraps matching words in <b> tags, strip them out
-          final textClean = textHtml.replaceAll(RegExp(r'<[^>]*>'), '');
+        debugPrint('🎯 Match Found Locally: Surah $surah, Ayah $ayah');
 
-          debugPrint('🎯 Match Found: Surah $surah, Ayah $ayah');
-
-          return RecognitionResult(
-            surah: surah,
-            ayah: ayah,
-            text: textClean,
-            confidence: 0.99, // Highly likely it's correct if the API returns a match
-          );
-        }
+        return RecognitionResult(
+          surah: surah,
+          ayah: ayah,
+          text: textClean,
+          confidence: 0.95,
+        );
       }
 
-      debugPrint('⚠️ No Quranic matches found for the transcription.');
+      debugPrint('⚠️ No local Quranic matches found for the transcription.');
       return null;
 
     } catch (e) {

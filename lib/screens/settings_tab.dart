@@ -5,6 +5,7 @@ import '../utils/app_colors.dart';
 import 'theme_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'premium_settings_screen.dart';
+import 'offline_library_screen.dart';
 import '../services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 
@@ -80,6 +81,21 @@ class SettingsTab extends StatelessWidget {
                         subtitle: 'واجهة مبسطة وألوان زاهية مخصصة للأطفال',
                         value: kidsMode.isKidsModeActive,
                         onChanged: (val) => kidsMode.toggleKidsMode(),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildSectionTitle('المكتبة والأوفلاين'),
+                  const SizedBox(height: 16),
+                  _buildSettingsCard(
+                    icon: Icons.library_books_rounded,
+                    title: 'المكتبة الأوفلاين',
+                    subtitle: 'إدارة التفاسير والتراجم المحملة على جهازك',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OfflineLibraryScreen()),
                       );
                     },
                   ),

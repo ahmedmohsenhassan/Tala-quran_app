@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'quran_database_service.dart';
 
 class AITajweedService {
   static final AITajweedService _instance = AITajweedService._internal();
@@ -9,7 +9,6 @@ class AITajweedService {
   AITajweedService._internal();
 
   final stt.SpeechToText _speech = stt.SpeechToText();
-  final Dio _dio = Dio();
   bool _isInit = false;
   String _currentTranscription = "";
 
@@ -58,21 +57,13 @@ class AITajweedService {
 
   Future<List<TajweedResult>> analyzeRecitation(String transcribedText, int surah, int ayah) async {
     try {
-      // 1. Fetch exact Uthmani text from API
-      // We use simple text since voice transcription doesn't include diacritics
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/verses/by_key/$surah:$ayah',
-        queryParameters: {
-          'fields': 'text_simple',
-        },
-      );
-
-      if (response.statusCode != 200) throw Exception('API failed');
+      // 1. 🔥 جلب النص من قاعدة البيانات المحلية (100% Offline)
+      final verse = await QuranDatabaseService().getVerse(surah, ayah);
+      if (verse == null) throw Exception('Verse not found in DB');
       
-      final verseData = response.data['verse'];
-      final targetText = verseData['text_simple'] as String;
+      final targetText = verse['text'] as String;
 
-      debugPrint('🎯 Target Ayah: $targetText');
+      debugPrint('🎯 Target Ayah (Tajweed Local): $targetText');
       debugPrint('🗣️ Spoken Text: $transcribedText');
 
       // 2. Perform normalized word matching

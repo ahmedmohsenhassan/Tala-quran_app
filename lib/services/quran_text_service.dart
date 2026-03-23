@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'tafseer_service.dart';
 import 'quran_database_service.dart';
@@ -143,24 +142,23 @@ class QuranTextService {
   }
 
   // ======================================================================
-  //  📚 التفسير — Tafseer (API with Offline Cache)
+  //  📚 التفسير — Tafseer (SQLite-first with Auto-cache)
   // ======================================================================
 
-  /// جلب تفسير آية معينة (مع تخزين محلي دائم)
+  /// جلب تفسير آية معينة (أوفلاين من SQLite مع جلب تلقائي في الخلفية)
   Future<Map<String, String>> getTafseer(int surah, int ayah) async {
     try {
       final tafseerId = await TafseerService.getTafseerId();
       final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
+      final identifier = _getTafseerIdentifier(tafseerId);
 
-      // 1. فحص الكاش أولاً (Offline)
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = 'tafseer_${tafseerId}_${surah}_$ayah';
-      final cached = prefs.getString(cacheKey);
-      if (cached != null) {
-        return {'text': cached, 'name': tafseerName};
+      // 1. محاولة الجلب من SQLite (الأولوية للأوفلاين)
+      final localText = await _quranDb.getTafseerText(surah, ayah, identifier);
+      if (localText != null) {
+        return {'text': localText, 'name': tafseerName};
       }
 
-      // 2. جلب من API وحفظ محلياً
+      // 2. إذا لم يوجد، جلب من API وحفظه في SQLite تلقائياً
       final response = await _dio.get(
         'https://api.quran.com/api/v4/quran/tafsirs/$tafseerId',
         queryParameters: {'verse_key': '$surah:$ayah'},
@@ -169,9 +167,21 @@ class QuranTextService {
       if (response.statusCode == 200) {
         final List tafsirs = response.data['tafsirs'];
         if (tafsirs.isNotEmpty) {
-          final text = tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.";
-          // حفظ في الكاش للاستخدام بدون إنترنت
-          await prefs.setString(cacheKey, text);
+          final text = _stripHtml(tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.");
+          
+          // حفظ في SQLite للاستخدام القادم بدون إنترنت (تخزين دائم)
+          final resourceId = await _quranDb.upsertResource({
+            'name': tafseerName,
+            'identifier': identifier,
+            'type': 'tafseer',
+            'lang': 'ar',
+            'is_downloaded': 0,
+          });
+
+          await _quranDb.saveTafseersBatch(resourceId, [
+            {'verse_key': '$surah:$ayah', 'text': text}
+          ]);
+
           return {'text': text, 'name': tafseerName};
         }
       }
@@ -179,26 +189,23 @@ class QuranTextService {
     } catch (e) {
       final tafseerId = await TafseerService.getTafseerId();
       final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
-      return {'text': "التفسير غير متاح حالياً (بدون إنترنت).", 'name': tafseerName};
+      return {'text': "التفسير غير متاح حالياً أوفلاين.", 'name': tafseerName};
     }
   }
 
   // ======================================================================
-  //  🌍 الترجمة — Translation (API with Offline Cache)
+  //  🌍 الترجمة — Translation (SQLite-first with Auto-cache)
   // ======================================================================
 
-  /// جلب الترجمة لآية معينة (مع التخزين المؤقت الدائم)
+  /// جلب الترجمة لآية معينة (أوفلاين من SQLite)
   Future<String> getTranslation(int surah, int ayah, int translationId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cacheKey = 'translation_${translationId}_${surah}_$ayah';
+    final identifier = _getTranslationIdentifier(translationId);
 
-    // 1. الكاش المحلي أولاً (Offline)
-    final cachedTranslation = prefs.getString(cacheKey);
-    if (cachedTranslation != null) {
-      return cachedTranslation;
-    }
+    // 1. محاولة الجلب من SQLite
+    final localText = await _quranDb.getTranslationText(surah, ayah, identifier);
+    if (localText != null) return localText;
 
-    // 2. جلب من API
+    // 2. جلب من API وحفظ في SQLite
     try {
       final response = await _dio.get(
         'https://api.quran.com/api/v4/quran/translations/$translationId',
@@ -208,15 +215,46 @@ class QuranTextService {
       if (response.statusCode == 200) {
         final List translations = response.data['translations'];
         if (translations.isNotEmpty) {
-          String text = translations[0]['text'] ?? "";
-          text = text.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
-          await prefs.setString(cacheKey, text);
+          final String text = _stripHtml(translations[0]['text'] ?? "");
+          
+          final resourceId = await _quranDb.upsertResource({
+            'name': 'Translation $translationId', // Simplified
+            'identifier': identifier,
+            'type': 'translation',
+            'lang': 'en',
+            'is_downloaded': 0,
+          });
+
+          await _quranDb.saveTranslationsBatch(resourceId, [
+            {'verse_key': '$surah:$ayah', 'text': text}
+          ]);
+          
           return text;
         }
       }
       return "الترجمة غير متاحة حالياً.";
     } catch (e) {
-      return ""; // إرجاع نص فارغ في حالة بدون إنترنت
+      return ""; 
+    }
+  }
+
+  String _stripHtml(String html) {
+    return html.replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ' ').trim();
+  }
+
+  String _getTafseerIdentifier(int id) {
+    switch (id) {
+      case 16: return 'ar-tafseer-muyassar';
+      case 1: return 'ar-tafsir-ibn-kathir';
+      default: return 'tafseer-$id';
+    }
+  }
+
+  String _getTranslationIdentifier(int id) {
+    switch (id) {
+      case 131: return 'en-sahih';
+      case 139: return 'en-yusuf-ali';
+      default: return 'translation-$id';
     }
   }
 

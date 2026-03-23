@@ -895,7 +895,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         child: const Icon(Icons.person, size: 14, color: AppColors.gold),
                       ),
                     if (totalParticipants > 3)
-                      Text('+\${totalParticipants - 3}', 
+                      Text('+${totalParticipants - 3}', 
                         style: const TextStyle(color: AppColors.gold, fontSize: 10)),
                   ],
                 ),

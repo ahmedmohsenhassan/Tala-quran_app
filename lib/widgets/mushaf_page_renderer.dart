@@ -120,6 +120,28 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
         setState(() => _isLoading = false);
       }
     }
+
+    _preCacheSurroundingPages();
+  }
+
+  Future<void> _preCacheSurroundingPages() async {
+    // 🔥 GPU-accelerated Pre-caching for zero-lag transitions
+    if (!mounted) return;
+    
+    if (widget.pageNumber < 604) {
+      _downloadService.getLocalPageImage(widget.pageNumber + 1).then((file) {
+        if (file != null && mounted) {
+          precacheImage(FileImage(file), context);
+        }
+      });
+    }
+    if (widget.pageNumber > 1) {
+      _downloadService.getLocalPageImage(widget.pageNumber - 1).then((file) {
+        if (file != null && mounted) {
+          precacheImage(FileImage(file), context);
+        }
+      });
+    }
   }
 
   Color get _parchmentColor {
@@ -387,8 +409,9 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildTopInfo(isLeft: true),
-                _buildTopInfo(isLeft: false),
+                Flexible(child: _buildTopInfo(isLeft: true)),
+                const SizedBox(width: 8),
+                Flexible(child: _buildTopInfo(isLeft: false)),
               ],
             ),
           ),
@@ -718,6 +741,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                         : (isHighlighted ? AppColors.gold.withValues(alpha: 0.2) : Colors.transparent)),
                     borderRadius: BorderRadius.circular(2),
                     border: showDebugBoxes ? Border.all(color: Colors.red, width: 1.0) : null,
+                    // ✨ Premium Glow Effect (Phase 112)
+                    boxShadow: isHighlighted ? [
+                      BoxShadow(
+                        color: AppColors.gold.withValues(alpha: 0.15),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      )
+                    ] : null,
                   ),
                 ),
               ),

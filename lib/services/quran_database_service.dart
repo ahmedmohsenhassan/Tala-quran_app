@@ -18,10 +18,13 @@ class QuranDatabaseService {
   QuranDatabaseService._internal();
 
   static Database? _database;
+  // ⚡ In-memory cache for ultra-fast repetitive lookups (Phase 112)
+  final Map<String, Map<String, dynamic>> _verseCache = {};
+  static const int _maxCacheSize = 30;
   bool _isInitializing = false;
   
   /// نسخة قاعدة البيانات — يتم زيادتها عند تحديث البنية
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 2; // Incremented for Tafseer/Translation support
   static const String _dbName = 'quran_v$_dbVersion.db';
   static const String _prefKeyDbReady = 'quran_db_ready_v$_dbVersion';
 
@@ -29,7 +32,7 @@ class QuranDatabaseService {
   //  💾 In-Memory LRU Cache (آخر 10 صفحات/سور مفتوحة)
   // ======================================================================
   final Map<String, List<Map<String, dynamic>>> _cache = {};
-  static const int _maxCacheSize = 10;
+  // static const int _maxCacheSize = 10; // This was for the other cache, now it's 30 for verses
 
   void _putCache(String key, List<Map<String, dynamic>> data) {
     if (_cache.length >= _maxCacheSize) {
@@ -116,6 +119,38 @@ class QuranDatabaseService {
       )
     ''');
 
+    // 📚 جداول المصادر الإضافية (تفسير وترجمة)
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS resources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        identifier TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL, -- 'translation' or 'tafseer'
+        lang TEXT NOT NULL,
+        is_downloaded INTEGER DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS translations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        resource_id INTEGER NOT NULL,
+        verse_key TEXT NOT NULL,
+        text TEXT NOT NULL,
+        FOREIGN KEY (resource_id) REFERENCES resources (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tafseers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        resource_id INTEGER NOT NULL,
+        verse_key TEXT NOT NULL,
+        text TEXT NOT NULL,
+        FOREIGN KEY (resource_id) REFERENCES resources (id) ON DELETE CASCADE
+      )
+    ''');
+
     // فهارس الأداء — Performance Indexes
     await db.execute('CREATE INDEX IF NOT EXISTS idx_verses_surah ON verses(surah)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_verses_page ON verses(page)');
@@ -123,6 +158,36 @@ class QuranDatabaseService {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_verses_key ON verses(verse_key)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_verses_text_clean ON verses(text_clean)');
     await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_verses_surah_ayah ON verses(surah, ayah)');
+
+    // فهارس المصادر
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_trans_resource ON translations(resource_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_trans_key ON translations(verse_key)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tafseer_resource ON tafseers(resource_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tafseer_key ON tafseers(verse_key)');
+
+    // ⚡ Database Optimization (Phase 112)
+    await db.execute('ANALYZE');
+    await db.execute('PRAGMA synchronous = NORMAL');
+    await db.execute('PRAGMA journal_mode = WAL');
+
+    // 🔍 محرك البحث المتقدم (Full Text Search)
+    // نستخدم FTS5 للبحث السريع بالكلمات
+    try {
+      await db.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS verses_fts USING fts5(
+          text_clean,
+          surah UNINDEXED,
+          ayah UNINDEXED,
+          verse_key UNINDEXED,
+          page UNINDEXED,
+          content='verses',
+          content_rowid='id'
+        )
+      ''');
+      debugPrint('✅ [QuranDB] FTS5 table created successfully.');
+    } catch (e) {
+      debugPrint('⚠️ [QuranDB] FTS5 not supported on this device, falling back to LIKE.');
+    }
   }
 
   // ======================================================================
@@ -264,6 +329,15 @@ class QuranDatabaseService {
     }
 
     await batch.commit(noResult: true);
+    
+    // 🔍 تحديث جدول البحث السريع بعد الإدراج
+    try {
+      await db.execute("INSERT INTO verses_fts(verses_fts) VALUES('rebuild')");
+      debugPrint('✅ [QuranDB] FTS5 search index rebuilt.');
+    } catch (e) {
+      debugPrint('⚠️ [QuranDB] Could not rebuild FTS5 index: $e');
+    }
+
     debugPrint('📊 [QuranDB] Batch committed: $totalInserted verses inserted.');
   }
 
@@ -319,6 +393,9 @@ class QuranDatabaseService {
 
   /// جلب آية واحدة
   Future<Map<String, dynamic>?> getVerse(int surah, int ayah) async {
+    final cacheKey = '$surah:$ayah';
+    if (_verseCache.containsKey(cacheKey)) return _verseCache[cacheKey];
+
     await _ensureDb();
     try {
       final results = await _database!.query(
@@ -327,7 +404,17 @@ class QuranDatabaseService {
         whereArgs: [surah, ayah],
         limit: 1,
       );
-      return results.isNotEmpty ? Map<String, dynamic>.from(results.first) : null;
+
+      if (results.isNotEmpty) {
+        final data = Map<String, dynamic>.from(results.first);
+        // ⚡ Update cache with LRU-ish behavior
+        if (_verseCache.length >= _maxCacheSize) {
+          _verseCache.remove(_verseCache.keys.first);
+        }
+        _verseCache[cacheKey] = data;
+        return data;
+      }
+      return null;
     } catch (e) {
       debugPrint('❌ [QuranDB] getVerse error: $e');
       return null;
@@ -365,13 +452,39 @@ class QuranDatabaseService {
   //  🔍 البحث — Search
   // ======================================================================
   
-  /// بحث سريع عن نص في الآيات (بدون تشكيل)
+  /// بحث سريع جداً عن نص في الآيات بالاعتماد على FTS5 أو LIKE كبديل
   Future<List<Map<String, dynamic>>> searchVerses(String query) async {
     final cleanQuery = removeTashkeel(query.trim());
     if (cleanQuery.isEmpty || cleanQuery.length < 2) return [];
 
     await _ensureDb();
 
+    try {
+      // 1. محاولة استخدام FTS5 أولاً (للبحث بالكلمات)
+      // MATCH يدعم البحث عن كلمات كاملة مع ترتيب
+      final ftsResults = await _database!.rawQuery('''
+        SELECT v.surah, v.ayah, v.text, v.verse_key, v.page 
+        FROM verses_fts f
+        JOIN verses v ON f.rowid = v.id
+        WHERE f.text_clean MATCH ? 
+        ORDER BY rank 
+        LIMIT 100
+      ''', [cleanQuery]);
+
+      if (ftsResults.isNotEmpty) {
+        return ftsResults.map((r) => {
+          'surahNumber': r['surah'].toString(),
+          'verseNumber': r['ayah'].toString(),
+          'text': r['text'],
+          'verseKey': r['verse_key'],
+          'page': r['page'],
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('ℹ️ [QuranDB] FTS search failed or not available, using LIKE fallback: $e');
+    }
+
+    // 2. البديل (LIKE) في حال لم يدعم الجهاز FTS أو لم توجد نتائج دقيقة
     try {
       final results = await _database!.query(
         'verses',
@@ -389,9 +502,104 @@ class QuranDatabaseService {
         'page': r['page'],
       }).toList();
     } catch (e) {
-      debugPrint('❌ [QuranDB] Search error: $e');
+      debugPrint('❌ [QuranDB] Search fallback error: $e');
       return [];
     }
+  }
+
+  // ======================================================================
+  //  📚 المصادر (ترجمة وتفسير) — Resources (Translation & Tafseer)
+  // ======================================================================
+
+  /// جلب نص الترجمة من SQLite
+  Future<String?> getTranslationText(int surah, int ayah, String identifier) async {
+    await _ensureDb();
+    try {
+      final res = await _database!.rawQuery('''
+        SELECT t.text FROM translations t
+        JOIN resources r ON t.resource_id = r.id
+        WHERE r.identifier = ? AND t.verse_key = ?
+      ''', [identifier, '$surah:$ayah']);
+      
+      return res.isNotEmpty ? res.first['text'] as String : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// جلب نص التفسير من SQLite
+  Future<String?> getTafseerText(int surah, int ayah, String identifier) async {
+    await _ensureDb();
+    try {
+      final res = await _database!.rawQuery('''
+        SELECT t.text FROM tafseers t
+        JOIN resources r ON t.resource_id = r.id
+        WHERE r.identifier = ? AND t.verse_key = ?
+      ''', [identifier, '$surah:$ayah']);
+      
+      return res.isNotEmpty ? res.first['text'] as String : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// إضافة أو تحديث وصف المصدر
+  Future<int> upsertResource(Map<String, dynamic> resource) async {
+    await _ensureDb();
+    final identifier = resource['identifier'];
+    
+    final existing = await _database!.query('resources', where: 'identifier = ?', whereArgs: [identifier]);
+    if (existing.isNotEmpty) {
+      final id = existing.first['id'] as int;
+      await _database!.update('resources', resource, where: 'id = ?', whereArgs: [id]);
+      return id;
+    } else {
+      return await _database!.insert('resources', resource);
+    }
+  }
+
+  /// حفظ قائمة ترجمات (دفعة واحدة)
+  Future<void> saveTranslationsBatch(int resourceId, List<Map<String, dynamic>> batchData) async {
+    await _ensureDb();
+    await _database!.transaction((txn) async {
+      final batch = txn.batch();
+      for (var item in batchData) {
+        batch.insert('translations', {
+          'resource_id': resourceId,
+          'verse_key': item['verse_key'],
+          'text': item['text'],
+        });
+      }
+      await batch.commit(noResult: true);
+    });
+    
+    await _database!.update('resources', {'is_downloaded': 1}, where: 'id = ?', whereArgs: [resourceId]);
+  }
+
+  /// حفظ قائمة تفاسير (دفعة واحدة)
+  Future<void> saveTafseersBatch(int resourceId, List<Map<String, dynamic>> batchData) async {
+    await _ensureDb();
+    await _database!.transaction((txn) async {
+      final batch = txn.batch();
+      for (var item in batchData) {
+        batch.insert('tafseers', {
+          'resource_id': resourceId,
+          'verse_key': item['verse_key'],
+          'text': item['text'],
+        });
+      }
+      await batch.commit(noResult: true);
+    });
+    
+    await _database!.update('resources', {'is_downloaded': 1}, where: 'id = ?', whereArgs: [resourceId]);
+  }
+
+  /// التحقق مما إذا كان المصدر محمل بالكامل
+  Future<bool> isResourceDownloaded(String identifier) async {
+    await _ensureDb();
+    final res = await _database!.query('resources', columns: ['is_downloaded'], where: 'identifier = ?', whereArgs: [identifier]);
+    if (res.isEmpty) return false;
+    return res.first['is_downloaded'] == 1;
   }
 
   // ======================================================================

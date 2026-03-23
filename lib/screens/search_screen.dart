@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/surah_metadata.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
@@ -21,6 +22,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<Map<String, dynamic>> _filteredSurahs = [];
   List<Map<String, dynamic>> _ayahResults = [];
+  List<String> _recentSearches = []; // 🔍 New for Phase 112
   bool _isAyahSearch = false;
   bool _isLoading = false;
 
@@ -28,6 +30,25 @@ class _SearchScreenState extends State<SearchScreen> {
   void initState() {
     super.initState();
     _filteredSurahs = List.from(surahMetadata);
+    _loadRecentSearches();
+  }
+
+  Future<void> _loadRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _recentSearches = prefs.getStringList('recent_quran_searches') ?? []);
+    }
+  }
+
+  Future<void> _saveSearch(String query) async {
+    if (query.trim().length < 3) return;
+    final prefs = await SharedPreferences.getInstance();
+    final list = List<String>.from(_recentSearches);
+    if (list.contains(query)) list.remove(query);
+    list.insert(0, query);
+    if (list.length > 5) list.removeLast();
+    await prefs.setStringList('recent_quran_searches', list);
+    if (mounted) setState(() => _recentSearches = list);
   }
 
   void _onSearch(String query) async {
@@ -110,10 +131,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
             // حقل البحث - Search field
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: TextField(
                 controller: _searchController,
                 onChanged: _onSearch,
+                onSubmitted: (val) => _saveSearch(val),
                 style: GoogleFonts.amiri(
                     color: AppColors.textPrimary, fontSize: 18),
                 decoration: InputDecoration(
@@ -145,6 +167,30 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
             ),
+
+            // 🔍 Recent Searches (Phase 112)
+            if (_recentSearches.isNotEmpty && _searchController.text.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('عمليات البحث الأخيرة', style: GoogleFonts.amiri(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: _recentSearches.map((s) => ActionChip(
+                        label: Text(s, style: GoogleFonts.amiri(fontSize: 14)),
+                        backgroundColor: AppColors.cardBackground,
+                        onPressed: () {
+                          _searchController.text = s;
+                          _onSearch(s);
+                        },
+                      )).toList(),
+                    ),
+                  ],
+                ),
+              ),
 
             if (_isAyahSearch)
               Padding(
@@ -270,11 +316,14 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   onTap: () {
                     final surahNum = int.parse(ayah['surahNumber']);
+                    final ayahNum = int.parse(ayah['verseNumber']);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => MushafViewerScreen(
                           initialPage: QuranPageHelper.getPageForSurah(surahNum),
+                          initialSurah: surahNum,
+                          initialAyah: ayahNum,
                         ),
                       ),
                     );
@@ -321,10 +370,18 @@ class _SearchScreenState extends State<SearchScreen> {
       final String wordClean = QuranDatabaseService.removeTashkeel(word);
 
       // Check if word contains the query, or query contains the word (robust partial matching)
+      // ✨ Premium Highlighting (Phase 112)
       if (wordClean.isNotEmpty && (wordClean.contains(queryClean) || queryClean.contains(wordClean))) {
         spans.add(TextSpan(
           text: '$word ',
-          style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.bold),
+          style: GoogleFonts.amiri(
+            color: AppColors.gold, 
+            fontSize: 20, 
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(color: AppColors.gold.withValues(alpha: 0.3), blurRadius: 10),
+            ],
+          ),
         ));
       } else {
         spans.add(TextSpan(
