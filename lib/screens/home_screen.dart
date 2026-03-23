@@ -24,6 +24,8 @@ import '../services/daily_verse_service.dart';
 import '../widgets/ayah_share_card.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/firebase_khatma_service.dart';
+import 'shared_khatma_hub_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -660,6 +662,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       physics: const BouncingScrollPhysics(),
       child: Row(
         children: [
+          _buildSharedKhatmaCard(),
+          const SizedBox(width: 16),
           _PremiumCardFrame(child: _buildJuzProgressCard()),
           const SizedBox(width: 16),
           _PremiumCardFrame(child: _buildSmartHifzCard()),
@@ -772,6 +776,141 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSharedKhatmaCard() {
+    final firebaseKhatma = Provider.of<FirebaseKhatmaService>(context, listen: false);
+
+    return StreamBuilder<List<SharedKhatma>>(
+      stream: firebaseKhatma.streamMyKhatmas(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return _PremiumCardFrame(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SharedKhatmaHubScreen()),
+                );
+              },
+              child: Container(
+                width: 180,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0x1A808000), // GOLD DARK 10%
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0x4DFFD700)), // GOLD 30%
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.group_add_rounded, color: AppColors.gold, size: 32),
+                    const SizedBox(height: 12),
+                    Text(
+                      'ختمة جماعية',
+                      style: GoogleFonts.amiri(
+                        color: AppColors.gold,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'تنافس مع الآخرين',
+                      style: GoogleFonts.amiri(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final khatma = snapshot.data!.first; // Show the most recent one
+        final totalParticipants = khatma.participants.length;
+
+        // Calculate aggregate progress 📈
+        double aggregateProgress = 0.0;
+        if (khatma.progress.isNotEmpty) {
+          int totalPagesRead = khatma.progress.values.reduce((a, b) => a + b);
+          // Total pages in Quran is 604. 
+          aggregateProgress = (totalPagesRead / 604).clamp(0.0, 1.0);
+        }
+        return _PremiumCardFrame(
+          child: Container(
+            width: 180,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.gold.withValues(alpha: 0.2), const Color(0xFF1A1A1A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.groups_rounded, color: AppColors.gold, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        khatma.title,
+                        style: GoogleFonts.amiri(
+                          color: AppColors.gold,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'المشاركون:',
+                  style: TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    for (int i = 0; i < math.min(totalParticipants, 3); i++)
+                      Container(
+                        margin: const EdgeInsets.only(left: 4),
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: const Color(0x4DFFD700), // GOLD 30%
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.gold, width: 1),
+                        ),
+                        child: const Icon(Icons.person, size: 14, color: AppColors.gold),
+                      ),
+                    if (totalParticipants > 3)
+                      Text('+\${totalParticipants - 3}', 
+                        style: const TextStyle(color: AppColors.gold, fontSize: 10)),
+                  ],
+                ),
+                const Spacer(),
+                LinearProgressIndicator(
+                  value: aggregateProgress,
+                  backgroundColor: Colors.white10,
+                  valueColor: const AlwaysStoppedAnimation(AppColors.gold),
+                  minHeight: 4,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

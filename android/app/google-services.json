@@ -1,0 +1,38 @@
+{
+  "project_info": {
+    "project_number": "70614484827",
+    "project_id": "tala-al-quran-db80c",
+    "storage_bucket": "tala-al-quran-db80c.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:70614484827:android:1630d375c7da710ed2fc7e",
+        "android_client_info": {
+          "package_name": "com.ahmed.tala_quran"
+        }
+      },
+      "authentication_info": {
+        "google_api_key": [
+          {
+            "api_key": "AIzaSyCh9BLaVa5qZk0IpBkpDr6aj_BZKpYISSg"
+          }
+        ]
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyCh9BLaVa5qZk0IpBkpDr6aj_BZKpYISSg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

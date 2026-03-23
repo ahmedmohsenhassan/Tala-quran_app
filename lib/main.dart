@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
-import 'services/ayah_info_service.dart';
+import 'services/quran_database_service.dart';
 import 'services/notification_service.dart';
 import 'services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +15,12 @@ import 'widgets/error_boundary.dart';
 import 'services/download_service.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; 
+import 'services/auth_service.dart';
+import 'services/firebase_khatma_service.dart';
+import 'services/firestore_sync_service.dart';
+
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -36,28 +42,54 @@ void main() async {
   await FlutterDownloader.initialize(debug: true, ignoreSsl: true);
   FlutterDownloader.registerCallback(DownloadService.callback);
 
-  // 🚀 تحسين سرعة التشغيل باستخدام التحميل المتوازي
-  // Optimize startup using parallel loading
-  debugPrint('🚀 Starting parallel initialization...');
+  // 📡 Safe Firebase Initialization (Offline-First)
+  bool isFirebaseInitialized = false;
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    isFirebaseInitialized = true;
+    debugPrint('✅ Firebase Initialized Successfully');
+  } on FirebaseException catch (e) {
+    if (e.code == 'duplicate-app') {
+      isFirebaseInitialized = true;
+      debugPrint('ℹ️ Firebase already initialized (duplicate-app). Proceeding...');
+    } else {
+      debugPrint('⚠️ Firebase Init Failed: $e');
+    }
+  } catch (e, stack) {
+    debugPrint('⚠️ Unexpected Firebase Error: $e');
+    debugPrint('🔥 STACK_TRACE: $stack');
+  }
+
+  if (isFirebaseInitialized) {
+    FirestoreSyncService().syncSurahsToFirestore();
+  }
+
+  // 🚀 تحسين سرعة التشغيل - تحميل المظهر فقط بشكل متزامن
+  // Fast Startup - Sync only UI critical parameters
+  debugPrint('🚀 Starting parallel UI initialization...');
   
-  // Define each task
-  final fDownload = DownloadService.initialize();
-  final fAyahInfo = AyahInfoService().initialize();
   final fThemeMode = ThemeService.getThemeMode();
   final fThemeColor = ThemeService.getThemeColor();
   final fThemeFont = ThemeService.getThemeFont();
   final fFontSize = ThemeService.getFontSizeMultiplier();
 
-  // Run all in parallel
-  await Future.wait([fDownload, fAyahInfo, fThemeMode, fThemeColor, fThemeFont, fFontSize]);
+  // Wait only for UI-critical settings
+  await Future.wait([fThemeMode, fThemeColor, fThemeFont, fFontSize]);
 
-  // Unpack safely after completion
+  // 📡 Start background services (Don't block the UI!)
+  DownloadService.initialize();
+  QuranDatabaseService().initialize().catchError((e) => debugPrint('❌ QuranDB Background Error: $e'));
+  NotificationService.initialize().catchError((e) => debugPrint('❌ Notification Background Error: $e'));
+
+  // Unpack UI settings
   final savedTheme = await fThemeMode;
   final savedColor = await fThemeColor;
   final savedFont = await fThemeFont;
   final savedFontSize = await fFontSize;
   
-  debugPrint('✅ Init completed. Theme: $savedTheme, Color: $savedColor');
+  debugPrint('✅ UI Ready. Theme: $savedTheme');
 
   themeNotifier.value = _parseThemeMode(savedTheme);
   fontNotifier.value = savedFont;
@@ -70,8 +102,18 @@ void main() async {
 
   runApp(
     ErrorBoundary(
-      child: ChangeNotifierProvider(
-        create: (_) => KidsModeService(),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => KidsModeService()),
+          // Inject AuthService to manage offline/online auth state freely
+          ChangeNotifierProvider(
+            create: (_) => AuthService(isFirebaseReady: isFirebaseInitialized),
+          ),
+          // 📡 Provide FirebaseKhatmaService for collaborative features
+          Provider(create: (_) => FirebaseKhatmaService()),
+          // 📡 Syncing service
+          Provider(create: (_) => FirestoreSyncService()),
+        ],
         child: const TalaQuranApp(),
       ),
     ),
@@ -120,7 +162,7 @@ class TalaQuranApp extends StatelessWidget {
 
                     return MaterialApp(
                       debugShowCheckedModeBanner: false,
-                      title: 'تلا قرآن',
+                      title: 'Tala Al-Quran',
                       themeMode: currentMode,
                       theme: ThemeData(
                         fontFamily: fontFamily,

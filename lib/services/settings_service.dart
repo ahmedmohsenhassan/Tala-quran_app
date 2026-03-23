@@ -12,6 +12,7 @@ class SettingsService {
   static const String _languageKey = 'settings_language';
   static const String _scrollSpeedKey = 'settings_scroll_speed';
   static const String _showProgressInNotificationsKey = 'settings_show_progress_in_notifications';
+  static const String _showTajweedKey = 'settings_show_tajweed'; // 🎨 Phase 103
 
   /// إبقاء الشاشة مضاءة — Keep screen on (Default: true)
   static Future<bool> getKeepScreenOn() async {
@@ -114,5 +115,16 @@ class SettingsService {
   static Future<void> setShowProgressInNotifications(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showProgressInNotificationsKey, value);
+  }
+
+  /// إظهار التجويد — Show Tajweed (Default: false)
+  static Future<bool> getShowTajweed() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_showTajweedKey) ?? false;
+  }
+
+  static Future<void> setShowTajweed(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showTajweedKey, value);
   }
 }

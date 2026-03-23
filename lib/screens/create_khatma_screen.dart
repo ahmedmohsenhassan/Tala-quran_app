@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
 import '../models/reading_plan.dart';
 import '../services/khatma_service.dart';
+import '../services/firebase_khatma_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 
@@ -21,6 +22,8 @@ class _CreateKhatmaScreenState extends State<CreateKhatmaScreen> {
   int _durationDays = 30;
   TimeOfDay? _reminderTime;
   PlanPreset _selectedPreset = PlanPreset.general;
+  bool _isShared = false;
+  bool _isLoading = false;
 
   final List<Color> _iconColors = [
     const Color(0xFF2196F3), // Blue
@@ -103,8 +106,9 @@ class _CreateKhatmaScreenState extends State<CreateKhatmaScreen> {
   }
 
   void _saveKhatma() async {
-    if (_titleController.text.isEmpty) return;
+    if (_titleController.text.isEmpty || _isLoading) return;
 
+    setState(() => _isLoading = true);
     HapticFeedback.heavyImpact();
     
     final plan = ReadingPlan(
@@ -124,8 +128,35 @@ class _CreateKhatmaScreenState extends State<CreateKhatmaScreen> {
       reminderTimes: _reminderTime != null ? [_reminderTime!.hour] : [],
     );
 
-    await KhatmaService.createPlan(plan);
-    if (mounted) Navigator.pop(context, true);
+    try {
+      // 1. Create locally (Always)
+      await KhatmaService.createPlan(plan);
+
+      // 2. 📡 Also create in Firebase if shared
+      if (_isShared) {
+        final firebaseService = FirebaseKhatmaService();
+        final cloudId = await firebaseService.createSharedKhatma(plan.title);
+        
+        if (cloudId == null && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('⚠️ لم يتم إنشاء الختمة السحابية، تأكد من الاتصال')),
+          );
+        }
+      }
+
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ خطأ في الحفظ: ${e.toString()}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -163,6 +194,8 @@ class _CreateKhatmaScreenState extends State<CreateKhatmaScreen> {
                     _buildFrequencyDisplay(),
                     const SizedBox(height: 24),
                     _buildReminderSelector(),
+                    const SizedBox(height: 24),
+                    _buildSharedToggle(),
                     const SizedBox(height: 40),
                     _buildCreateButton(),
                     const SizedBox(height: 40),
@@ -428,21 +461,63 @@ class _CreateKhatmaScreenState extends State<CreateKhatmaScreen> {
   }
 
   Widget _buildCreateButton() {
-    return SizedBox(
+     return SizedBox(
       width: double.infinity,
       height: 55,
       child: ElevatedButton(
-        onPressed: _saveKhatma,
+        onPressed: _isLoading ? null : _saveKhatma,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green.shade700,
+          backgroundColor: _isLoading ? AppColors.emerald.withValues(alpha: 0.3) : AppColors.emerald,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           elevation: 5,
         ),
-        child: Text(
-          'إنشــاء',
-          style: GoogleFonts.notoKufiArabic(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
+        child: _isLoading 
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            )
+          : Text(
+              'إنشــاء',
+              style: GoogleFonts.notoKufiArabic(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+      ),
+    );
+  }
+
+  Widget _buildSharedToggle() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: _isShared ? AppColors.gold.withValues(alpha: 0.1) : AppColors.cardBackground.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: _isShared ? AppColors.gold : Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Switch(
+            value: _isShared,
+            onChanged: (v) => setState(() => _isShared = v),
+            activeThumbColor: AppColors.gold,
+            activeTrackColor: AppColors.gold.withValues(alpha: 0.5),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'مشاركة مع المجتمع',
+                style: GoogleFonts.notoKufiArabic(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              Text(
+                'ستظهر الختمة للآخرين للانضمام',
+                style: GoogleFonts.notoKufiArabic(color: AppColors.textMuted, fontSize: 10),
+              ),
+            ],
+          ),
+          const Icon(Icons.public_rounded, color: AppColors.gold),
+        ],
       ),
     );
   }

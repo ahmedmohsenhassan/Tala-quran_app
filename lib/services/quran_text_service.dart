@@ -6,20 +6,25 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'tafseer_service.dart';
-import 'search_database_service.dart'; // 🎯 New for Phase 69 Offline Search
+import 'quran_database_service.dart';
 
-/// خدمة جلب نص القرآن الكريم
-/// Service to fetch Quranic text from API or local JSON assets
+/// خدمة جلب نص القرآن الكريم — 100% Offline-First
+/// Service to fetch Quranic text from local SQLite DB
+/// API is used ONLY for Tafseer/Translation (supplementary)
 class QuranTextService {
   static final QuranTextService _instance = QuranTextService._internal();
   factory QuranTextService() => _instance;
   QuranTextService._internal();
 
-  final Dio _dio = Dio();
-  
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  ));
+  final QuranDatabaseService _quranDb = QuranDatabaseService();
+
   // Cache for local directory path
   static String? _localDirPath;
-  
+
   static Future<String> _getLocalPath() async {
     if (_localDirPath != null) return _localDirPath!;
     try {
@@ -31,150 +36,78 @@ class QuranTextService {
     }
   }
 
-  /// البحث عن آيات تحتوي على نص معين (نسخة الأوفلاين السريعة جدًا)
-  /// Search for ayahs containing specific text (Blazing fast offline SQLite)
+  // ======================================================================
+  //  🔍 البحث — Search (100% Offline via SQLite)
+  // ======================================================================
+
+  /// البحث عن آيات تحتوي على نص معين
   Future<List<Map<String, dynamic>>> searchAyahs(String query) async {
     try {
-      final dbService = SearchDatabaseService();
-      // Initialize the database in the background if it's the first run
-      await dbService.database; 
-      return await dbService.search(query);
+      return await _quranDb.searchVerses(query);
     } catch (e) {
       debugPrint('❌ [QuranTextService] Search Error: $e');
       return [];
     }
   }
 
-  /// جلب تفسير آية معينة
-  /// Fetch Tafseer for a specific verse
-  Future<Map<String, String>> getTafseer(int surah, int ayah) async {
-    try {
-      // قراءة التفسير المفضل للمستخدم (الافتراضي 16 الجلالين)
-      final tafseerId = await TafseerService.getTafseerId();
-      final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
+  // ======================================================================
+  //  📖 جلب بيانات السورة — Surah Data (100% Offline)
+  // ======================================================================
 
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/tafsirs/$tafseerId',
-        queryParameters: {'verse_key': '$surah:$ayah'},
-      );
-
-      if (response.statusCode == 200) {
-        final List tafsirs = response.data['tafsirs'];
-        if (tafsirs.isNotEmpty) {
-          return {
-            'text': tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.",
-            'name': tafseerName,
-          };
-        }
-      }
-      return {'text': "تعذر جلب التفسير.", 'name': tafseerName};
-    } catch (e) {
-      return {'text': "خطأ في الاتصال: $e", 'name': 'خطأ'};
-    }
-  }
-
-  /// جلب الترجمة لآية معينة (مع التخزين المؤقت - Offline Cache)
-  /// Fetch Translation for a specific verse with caching mechanism
-  Future<String> getTranslation(int surah, int ayah, int translationId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cacheKey = 'translation_${translationId}_${surah}_$ayah';
-
-    // 1. محاولة جلبها من الكاش (Offline)
-    final cachedTranslation = prefs.getString(cacheKey);
-    if (cachedTranslation != null) {
-      return cachedTranslation;
-    }
-
-    // 2. إذا لم تكن موجودة، جلبها من API
-    try {
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/translations/$translationId',
-        queryParameters: {'verse_key': '$surah:$ayah'},
-      );
-
-      if (response.statusCode == 200) {
-        final List translations = response.data['translations'];
-        if (translations.isNotEmpty) {
-          // تنظيف نص الترجمة من أي وسوم HTML قبل الحفظ
-          String text = translations[0]['text'] ?? "";
-          text = text.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
-          
-          // 3. حفظها في الكاش للمرة القادمة
-          await prefs.setString(cacheKey, text);
-          return text;
-        }
-      }
-      return "";
-    } catch (e) {
-      return ""; // إرجاع نص فارغ في حالة الخطأ لعدم إفساد تجربة القراءة
-    }
-  }
-
-  /// جلب بيانات السورة بالكامل (آيات نصية)
-  /// Fetch complete Surah data (Uthmani text)
+  /// جلب بيانات السورة بالكامل (آيات نصية) — من SQLite المحلي
   Future<Map<String, dynamic>> getSurahDetail(int surahNumber) async {
     try {
-      // محاولة جلب البيانات من API حقيقي أولاً لضمان الدقة
-      // Try fetching from real API first for accuracy
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/verses/uthmani',
-        queryParameters: {'chapter_number': surahNumber},
-      );
-
-      if (response.statusCode == 200) {
-        final List verses = response.data['verses'];
+      // 1. SQLite أولاً (سريع ومحلي)
+      final verses = await _quranDb.getVersesBySurah(surahNumber);
+      if (verses.isNotEmpty) {
         return {
           "surahNumber": surahNumber,
-          "ayahs": verses.map((v) {
-            // Parse verse number from verse_key (e.g., "1:1" -> 1)
-            int num = 1;
-            try {
-              if (v['verse_key'] != null) {
-                num = int.parse(v['verse_key'].split(':')[1]);
-              } else {
-                num = v['id'] ?? 1;
-              }
-            } catch (_) {
-              num = v['id'] ?? 1;
-            }
-
-            return {
-              "number": num,
-              "text": v['text_uthmani'] ?? "",
-            };
+          "ayahs": verses.map((v) => {
+            "number": v['ayah'],
+            "text": v['text'],
           }).toList(),
         };
       }
-      throw Exception('API failed');
     } catch (e) {
-      // Fallback to local assets if offline or API fails
-      try {
-        String fileName = _getFileName(surahNumber);
-        final String localData =
-            await rootBundle.loadString('assets/surahs/$fileName.json');
-        return json.decode(localData);
-      } catch (err) {
-        return {
-          "error": "فشل تحميل البيانات",
-          "ayahs": [
-            {"number": 1, "text": "عذراً، يرجى التحقق من الاتصال بالإنترنت."}
-          ]
-        };
-      }
+      debugPrint('⚠️ [QuranTextService] SQLite failed: $e');
+    }
+
+    // 2. Fallback to local JSON assets
+    try {
+      final fileName = _getSurahFileName(surahNumber);
+      final String localData = await rootBundle.loadString('assets/surahs/$fileName.json');
+      return json.decode(localData);
+    } catch (err) {
+      debugPrint('❌ [QuranTextService] JSON Fallback also failed: $err');
+      return {
+        "error": "فشل تحميل البيانات",
+        "ayahs": [
+          {"number": 1, "text": "عذراً، تعذر تحميل بيانات السورة. جرب إعادة تشغيل التطبيق."}
+        ]
+      };
     }
   }
 
-  /// جلب آيات صفحة معينة مع بيانات الكلمات والأسطر (للدقة القصوى)
-  /// Fetch verses for a specific page with word-level data and line numbers
+  // ======================================================================
+  //  📄 جلب آيات الصفحة — Page Verses (100% Offline)
+  // ======================================================================
+
+  /// جلب آيات صفحة معينة
   Future<List<Map<String, dynamic>>> getVersesByPage(int pageNumber) async {
-    // 1. Try local Assets first (Bundled)
+    // 1. SQLite أولاً
+    try {
+      final verses = await _quranDb.getVersesByPage(pageNumber);
+      if (verses.isNotEmpty) return verses;
+    } catch (_) {}
+
+    // 2. Local Assets fallback (bundled)
     try {
       final String localData = await rootBundle.loadString('assets/mushaf/data/verses_p$pageNumber.json');
       final decoded = json.decode(localData);
       return List<Map<String, dynamic>>.from(decoded);
     } catch (_) {}
 
-    // 2. Try Local STORAGE (Downloaded)
+    // 3. Local STORAGE (Downloaded)
     try {
       final localPath = await _getLocalPath();
       final file = File('$localPath/mushaf/$pageNumber/verses_p$pageNumber.json');
@@ -184,36 +117,19 @@ class QuranTextService {
       }
     } catch (_) {}
 
-    try {
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/verses/uthmani',
-        queryParameters: {
-          'page_number': pageNumber,
-          'fields': 'text_uthmani,verse_key,line_number,page_number',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(response.data['verses']);
-      }
-      return [];
-    } catch (e) {
-      debugPrint("Error fetching page verses: $e");
-      return [];
-    }
+    return [];
   }
 
   /// جلب بيانات الكلمات لصفحة معينة (للتظليل كلمة بكلمة)
-  /// Fetch word-level data for a specific page (for Word-by-Word highlighting)
   Future<List<Map<String, dynamic>>> getPageWords(int pageNumber) async {
-    // 1. Try local Assets first (Bundled)
+    // 1. Local Assets (Bundled)
     try {
       final String localData = await rootBundle.loadString('assets/mushaf/data/words_p$pageNumber.json');
       final decoded = json.decode(localData);
       return List<Map<String, dynamic>>.from(decoded);
     } catch (_) {}
 
-    // 2. Try Local STORAGE (Downloaded)
+    // 2. Local STORAGE (Downloaded)
     try {
       final localPath = await _getLocalPath();
       final file = File('$localPath/mushaf/$pageNumber/words_p$pageNumber.json');
@@ -223,40 +139,93 @@ class QuranTextService {
       }
     } catch (_) {}
 
+    return [];
+  }
+
+  // ======================================================================
+  //  📚 التفسير — Tafseer (API with Offline Cache)
+  // ======================================================================
+
+  /// جلب تفسير آية معينة (مع تخزين محلي دائم)
+  Future<Map<String, String>> getTafseer(int surah, int ayah) async {
     try {
+      final tafseerId = await TafseerService.getTafseerId();
+      final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
+
+      // 1. فحص الكاش أولاً (Offline)
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'tafseer_${tafseerId}_${surah}_$ayah';
+      final cached = prefs.getString(cacheKey);
+      if (cached != null) {
+        return {'text': cached, 'name': tafseerName};
+      }
+
+      // 2. جلب من API وحفظ محلياً
       final response = await _dio.get(
-        'https://api.quran.com/api/v4/verses/by_page/$pageNumber',
-        queryParameters: {
-          'words': 'true',
-          'word_fields': 'text_uthmani,line_number,location',
-        },
+        'https://api.quran.com/api/v4/quran/tafsirs/$tafseerId',
+        queryParameters: {'verse_key': '$surah:$ayah'},
       );
 
       if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(response.data['verses']);
+        final List tafsirs = response.data['tafsirs'];
+        if (tafsirs.isNotEmpty) {
+          final text = tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.";
+          // حفظ في الكاش للاستخدام بدون إنترنت
+          await prefs.setString(cacheKey, text);
+          return {'text': text, 'name': tafseerName};
+        }
       }
-      return [];
+      return {'text': "تعذر جلب التفسير. تأكد من الاتصال بالإنترنت.", 'name': tafseerName};
     } catch (e) {
-      debugPrint("Error fetching page words: $e");
-      return [];
+      final tafseerId = await TafseerService.getTafseerId();
+      final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
+      return {'text': "التفسير غير متاح حالياً (بدون إنترنت).", 'name': tafseerName};
     }
   }
 
-  String _getFileName(int number) {
-    final names = {
-      1: "Al-Fatihah",
-      2: "Al-Baqarah",
-      3: "Aal-i-Imraan",
-      4: "An-Nisaa",
-      5: "Al-Maaida",
-      6: "Al-An'aam",
-      7: "Al-A'raaf",
-      8: "Al-Anfaal",
-      9: "At-Tawba",
-      19: "Maryam",
-      36: "Yaseen",
-      67: "Al-Mulk",
-    };
-    return names[number] ?? "Surah_$number";
+  // ======================================================================
+  //  🌍 الترجمة — Translation (API with Offline Cache)
+  // ======================================================================
+
+  /// جلب الترجمة لآية معينة (مع التخزين المؤقت الدائم)
+  Future<String> getTranslation(int surah, int ayah, int translationId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = 'translation_${translationId}_${surah}_$ayah';
+
+    // 1. الكاش المحلي أولاً (Offline)
+    final cachedTranslation = prefs.getString(cacheKey);
+    if (cachedTranslation != null) {
+      return cachedTranslation;
+    }
+
+    // 2. جلب من API
+    try {
+      final response = await _dio.get(
+        'https://api.quran.com/api/v4/quran/translations/$translationId',
+        queryParameters: {'verse_key': '$surah:$ayah'},
+      );
+
+      if (response.statusCode == 200) {
+        final List translations = response.data['translations'];
+        if (translations.isNotEmpty) {
+          String text = translations[0]['text'] ?? "";
+          text = text.replaceAll(RegExp(r'<[^>]*>|&nbsp;'), '');
+          await prefs.setString(cacheKey, text);
+          return text;
+        }
+      }
+      return "الترجمة غير متاحة حالياً.";
+    } catch (e) {
+      return ""; // إرجاع نص فارغ في حالة بدون إنترنت
+    }
+  }
+
+  // ======================================================================
+  //  🛠️ أدوات — Utilities
+  // ======================================================================
+
+  /// Map surah number to its JSON filename
+  String _getSurahFileName(int number) {
+    return QuranDatabaseService.surahFiles[number - 1];
   }
 }

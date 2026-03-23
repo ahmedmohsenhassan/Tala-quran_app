@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:provider/provider.dart';
+import '../services/firebase_khatma_service.dart';
 
 import '../widgets/mushaf_audio_player.dart';
 import '../widgets/ai_tajweed_sheet.dart';
@@ -72,14 +73,18 @@ Color get _parchmentDark {
   }
 }
 
-const Color _pageShadow = Color(0x33000000);
 
 /// Premium Mushaf Viewer — عارض المصحف الاحترافي
 /// A realistic, premium 3D Quran viewer experience
 class MushafViewerScreen extends StatefulWidget {
   final int initialPage;
+  final String? sharedKhatmaId;
 
-  const MushafViewerScreen({super.key, this.initialPage = 1});
+  const MushafViewerScreen({
+    super.key, 
+    this.initialPage = 1,
+    this.sharedKhatmaId,
+  });
 
   @override
   State<MushafViewerScreen> createState() => _MushafViewerScreenState();
@@ -146,12 +151,26 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // Mini-Map Slider 📜
   int? _previewPage;
   bool _isScrubbing = false;
+  bool _isPageZoomed = false;
+  bool _showTajweed = false; // 🖌️ New for Phase 103
+  
+  // 📡 Collaborative Khatma State (Phase 105)
+  late final FirebaseKhatmaService _firebaseKhatma;
+  Stream<SharedKhatma>? _khatmaStream;
 
   @override
   void initState() {
     super.initState();
     _currentPage = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage - 1);
+    
+    // 📡 Initialize Collaborative Features
+    _firebaseKhatma = Provider.of<FirebaseKhatmaService>(context, listen: false);
+    if (widget.sharedKhatmaId != null) {
+      _khatmaStream = _firebaseKhatma.streamKhatma(widget.sharedKhatmaId!);
+      _firebaseKhatma.updatePresence(widget.sharedKhatmaId!, true);
+    }
+
     _loadPageData(widget.initialPage);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
@@ -178,6 +197,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _loadTheme();
     _initWakelock();
     _loadBookmarkedPages();
+    _loadTajweedSetting(); // 🖌️ New for Phase 103
 
     // Start session timer ⏱️
     _sessionStopwatch.start();
@@ -196,6 +216,11 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     if (keepScreenOn) {
       WakelockPlus.enable();
     }
+  }
+
+  Future<void> _loadTajweedSetting() async {
+    final show = await SettingsService.getShowTajweed();
+    if (mounted) setState(() => _showTajweed = show);
   }
 
   Future<void> _loadBookmarkedPages() async {
@@ -277,6 +302,11 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _pageTurnController.dispose();
     _sanctuaryController.dispose();
 
+    // 📡 Leave Shared Khatma Session
+    if (widget.sharedKhatmaId != null) {
+      _firebaseKhatma.updatePresence(widget.sharedKhatmaId!, false);
+    }
+
     // Stop session timer and save reading time ⏱️
     _sessionStopwatch.stop();
     _sessionTickTimer?.cancel();
@@ -323,6 +353,11 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => MushafSettingsDialog(
+        showTajweed: _showTajweed, // 🖌️ Pass current state
+        onTajweedChanged: (val) {
+          setState(() => _showTajweed = val);
+          SettingsService.setShowTajweed(val);
+        },
         onQuranFontSizeChanged: (val) => setState(() => _quranFontSize = val),
         onTranslationFontSizeChanged: (val) => setState(() => _translationFontSize = val),
         onFontChanged: (val) => setState(() => _selectedFont = val),
@@ -511,6 +546,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   ),
 
                   // === محراب التلاوة Overlay ===
+                  if (_isSanctuaryMode)
                     Positioned.fill(
                       key: const ValueKey('mushaf_sanctuary_overlay'),
                       child: _SanctuaryOverlay(
@@ -817,209 +853,274 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _darkGold.withValues(alpha: 0.6),
-                        width: 2,
-                      ),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: _darkGold.withValues(alpha: 0.6),
+                    width: 2,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // خلفية الصفحة (ورق عتيق)
+                    Container(
+                      key: const ValueKey('mushaf_parchment_bg'),
+                      color: _parchment,
                     ),
-                      child: Stack(
-                        children: [
-                          // خلفية الصفحة (ورق عتيق)
-                          Container(
-                            key: const ValueKey('mushaf_parchment_bg'),
-                            color: _parchment,
-                          ),
+                    
+                    // Sanctuary Darken Layer
+                    if (_isSanctuaryMode)
+                      Positioned.fill(
+                        key: const ValueKey('mushaf_sanctuary_darken'),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 1000),
+                          color: Colors.black.withValues(alpha: 0.12),
+                        ),
+                      ),
+
+                    Directionality(
+                      key: const ValueKey('mushaf_page_view_wrapper'),
+                      textDirection: TextDirection.rtl,
+                      child: PageView.builder(
+                        key: const PageStorageKey('mushaf_page_view'),
+                        controller: _pageController,
+                        physics: _isPageZoomed 
+                          ? const NeverScrollableScrollPhysics() 
+                          : const BouncingScrollPhysics(),
+                        scrollDirection: _isVerticalMode ? Axis.vertical : Axis.horizontal,
+                        clipBehavior: Clip.none, // Essential for showing curl outside bounds
+                        reverse: false, // Page 1 on right, Swipe R->L advances
+                        itemCount: 604,
+                        onPageChanged: (index) {
+                          final page = index + 1;
                           
-                          // Sanctuary Darken Layer
-                          if (_isSanctuaryMode)
-                            Positioned.fill(
-                              key: const ValueKey('mushaf_sanctuary_darken'),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 1000),
-                                color: Colors.black.withValues(alpha: 0.12),
-                              ),
-                            ),
+                          // Premium Haptic Feedback on Page Turn (especially for vertical mode)
+                          if (_isVerticalMode) {
+                            HapticFeedback.selectionClick();
+                          }
+        
+                          // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
+                          HapticFeedback.lightImpact();
 
-                          Directionality(
-                            key: const ValueKey('mushaf_page_view_wrapper'),
-                            textDirection: TextDirection.rtl,
-                            child: PageView.builder(
-                              key: const PageStorageKey('mushaf_page_view'),
-                              controller: _pageController,
-                              scrollDirection: _isVerticalMode ? Axis.vertical : Axis.horizontal,
-                              clipBehavior: Clip.none, // Essential for showing curl outside bounds
-                              reverse: false, // Page 1 on right, Swipe R->L advances
-                              itemCount: 604,
-                              onPageChanged: (index) {
-                                final page = index + 1;
-                                
-                                // Premium Haptic Feedback on Page Turn (especially for vertical mode)
-                                if (_isVerticalMode) {
-                                  HapticFeedback.selectionClick();
+                          setState(() {
+                            _currentPage = page;
+                            _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
+                            _currentJuz = QuranPageHelper.getJuzForPage(page);
+                          });
+                          _loadPageData(page, isBackground: true);
+                          _recordPageVisit(page);
+                        },
+                        itemBuilder: (context, index) {
+                          return AnimatedBuilder(
+                            animation: _pageController,
+                            builder: (context, child) {
+                              final pageNumber = index + 1;
+                              double angle = 0.0;
+                              double pageOffset = 0.0;
+
+                              if (_pageController.hasClients && _pageController.position.haveDimensions) {
+                                try {
+                                  pageOffset = _pageController.page! - index;
+                                } catch (e) {
+                                  // Safety for build synchronization
+                                  pageOffset = 0.0;
                                 }
-              
-                                // اهتزاز خفيف جداً عند تقليب الصفحة — Subtle haptic feedback
-                                HapticFeedback.lightImpact();
+                              }
+                              
+                              // THE HYPER-REALISTIC "CYLINDRICAL CURL"
+                              // Only show curl in horizontal mode
+                              if (!_isVerticalMode && pageOffset > 0 && pageOffset < 1) {
+                                // 1. Calculations for the curl geometry
+                                angle = (pageOffset * math.pi).clamp(0.0, math.pi);
+                                
+                                final double curlFactor = math.sin(pageOffset * math.pi);
+                                final double zProtrusion = curlFactor * 140; 
+                                
+                                final bool isBackFace = angle > (math.pi / 2);
 
-                                setState(() {
-                                  _currentPage = page;
-                                  _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
-                                  _currentJuz = QuranPageHelper.getJuzForPage(page);
-                                });
-                                _loadPageData(page, isBackground: true);
-                                _recordPageVisit(page);
-                              },
-                              itemBuilder: (context, index) {
-                                return AnimatedBuilder(
-                                  animation: _pageController,
-                                  builder: (context, child) {
-                                    final pageNumber = index + 1;
-                                    double angle = 0.0;
-                                    double pageOffset = 0.0;
+                                return Transform(
+                                  alignment: Alignment.centerRight,
+                                  transform: Matrix4.identity()
+                                    ..setEntry(0, 3, pageOffset * MediaQuery.of(context).size.width)
+                                    ..setEntry(3, 2, 0.0012)
+                                    ..setEntry(2, 3, zProtrusion)
+                                    ..rotateY(angle)
+                                    ..setEntry(1, 0, pageOffset * 0.15 * (isBackFace ? 1 : -1))
+                                    ..rotateX(-pageOffset * 0.06),
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: Container(
+                                          margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
+                                          decoration: BoxDecoration(
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: (curlFactor * 0.5).clamp(0.0, 0.5)),
+                                                blurRadius: 40,
+                                                offset: const Offset(20, 0),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
 
-                                    if (_pageController.hasClients && _pageController.position.haveDimensions) {
-                                      try {
-                                        pageOffset = _pageController.page! - index;
-                                      } catch (e) {
-                                        // Safety for build synchronization
-                                        pageOffset = 0.0;
-                                      }
-                                    }
-                                    
-                                    // THE HYPER-REALISTIC "CYLINDRICAL CURL"
-                                    // Only show curl in horizontal mode
-                                    if (!_isVerticalMode && pageOffset > 0 && pageOffset < 1) {
-                                      // 1. Calculations for the curl geometry
-                                      angle = (pageOffset * math.pi).clamp(0.0, math.pi);
-                                      
-                                      final double curlFactor = math.sin(pageOffset * math.pi);
-                                      final double zProtrusion = curlFactor * 140; 
-                                      
-                                      final bool isBackFace = angle > (math.pi / 2);
-
-                                      return Transform(
-                                        alignment: Alignment.centerRight,
-                                        transform: Matrix4.identity()
-                                          ..setEntry(0, 3, pageOffset * MediaQuery.of(context).size.width)
-                                          ..setEntry(3, 2, 0.0012)
-                                          ..setEntry(2, 3, zProtrusion)
-                                          ..rotateY(angle)
-                                          ..setEntry(1, 0, pageOffset * 0.15 * (isBackFace ? 1 : -1))
-                                          ..rotateX(-pageOffset * 0.06),
+                                      ClipPath(
+                                        clipper: _CylindricalPageClipper(progress: pageOffset),
                                         child: Stack(
                                           children: [
-                                            Positioned.fill(
-                                              child: Container(
-                                                margin: EdgeInsets.only(right: 40 + (1.0 - pageOffset) * 100),
-                                                decoration: BoxDecoration(
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black.withValues(alpha: (curlFactor * 0.5).clamp(0.0, 0.5)),
-                                                      blurRadius: 40,
-                                                      offset: const Offset(20, 0),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-
-                                            ClipPath(
-                                              clipper: _CylindricalPageClipper(progress: pageOffset),
-                                              child: Stack(
-                                                children: [
-                                                  RepaintBoundary(
-                                                    child: isBackFace 
-                                                      ? Transform(
-                                                          alignment: Alignment.center,
-                                                          transform: Matrix4.rotationY(math.pi),
-                                                          child: Container(
-                                                            color: _parchmentDark,
-                                                            child: ColorFiltered(
-                                                              colorFilter: ColorFilter.mode(
-                                                                Colors.black.withValues(alpha: 0.8),
-                                                                BlendMode.srcOver,
-                                                              ),
-                                                              child: _buildPremiumPage(pageNumber + 1),
-                                                            ),
-                                                          ),
-                                                        )
-                                                      : _buildPremiumPage(pageNumber),
-                                                  ),
-
-                                                  Positioned.fill(
+                                            RepaintBoundary(
+                                              child: isBackFace 
+                                                ? Transform(
+                                                    alignment: Alignment.center,
+                                                    transform: Matrix4.rotationY(math.pi),
                                                     child: Container(
-                                                      decoration: BoxDecoration(
-                                                        gradient: LinearGradient(
-                                                          begin: isBackFace ? Alignment.centerLeft : Alignment.centerRight,
-                                                          end: isBackFace ? Alignment.centerRight : Alignment.centerLeft,
-                                                          stops: const [0.0, 0.45, 0.55, 1.0],
-                                                          colors: [
-                                                            Colors.black.withValues(alpha: isBackFace ? 0.4 : 0.1),
-                                                            Colors.transparent,
-                                                            Colors.white.withValues(alpha: curlFactor * 0.35),
-                                                            Colors.black.withValues(alpha: isBackFace ? 0.1 : 0.5),
-                                                          ],
+                                                      color: _parchmentDark,
+                                                      child: ColorFiltered(
+                                                        colorFilter: ColorFilter.mode(
+                                                          Colors.black.withValues(alpha: 0.8),
+                                                          BlendMode.srcOver,
                                                         ),
+                                                        child: _buildPremiumPage(pageNumber + 1),
                                                       ),
                                                     ),
+                                                  )
+                                                : _buildPremiumPage(pageNumber),
+                                            ),
+
+                                            Positioned.fill(
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    begin: isBackFace ? Alignment.centerLeft : Alignment.centerRight,
+                                                    end: isBackFace ? Alignment.centerRight : Alignment.centerLeft,
+                                                    stops: const [0.0, 0.45, 0.55, 1.0],
+                                                    colors: [
+                                                      Colors.black.withValues(alpha: isBackFace ? 0.4 : 0.1),
+                                                      Colors.transparent,
+                                                      Colors.white.withValues(alpha: curlFactor * 0.35),
+                                                      Colors.black.withValues(alpha: isBackFace ? 0.1 : 0.5),
+                                                    ],
                                                   ),
-                                                ],
+                                                ),
                                               ),
                                             ),
                                           ],
                                         ),
-                                      );
-                                    } 
-
-                                    return _buildPremiumPage(pageNumber);
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-
-                          // ظل الكعب على الصفحة
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: 25,
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.centerRight,
-                                  end: Alignment.centerLeft,
-                                  colors: [
-                                    _pageShadow,
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          // إطار زخرفي داخلي
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: _richGold.withValues(alpha: 0.15),
-                                    width: 1,
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                                );
+                              } 
+
+                              return _buildPremiumPage(pageNumber);
+                            },
+                          );
+                        },
                       ),
                     ),
-                  ),
+
+                    // ظل الكعب على الصفحة
+                    Positioned(
+                      key: const ValueKey('mushaf_binding_shadow'),
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.15),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.05),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.15),
+                              ],
+                              stops: const [0.0, 0.48, 0.5, 0.52, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // 📡 Live Presence Pulse (Phase 105)
+                    if (_khatmaStream != null)
+                      _buildLivePresencePulse(),
+
+                    // إطار زخرفي داخلي
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: _richGold.withValues(alpha: 0.15),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          );
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLivePresencePulse() {
+    return StreamBuilder<SharedKhatma>(
+      stream: _khatmaStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox();
+        final khatma = snapshot.data!;
+        final onlineCount = khatma.onlineParticipants.length;
+        if (onlineCount <= 1) return const SizedBox(); // Only show if others are there
+
+        return Positioned(
+          top: 70,
+          right: 20,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _richGold.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Animated Pulse Dot
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.greenAccent,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(color: Colors.greenAccent, blurRadius: 4, spreadRadius: 1),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'يقرأ الآن: $onlineCount',
+                  style: GoogleFonts.amiri(
+                    color: _richGold,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
 
@@ -1109,9 +1210,14 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       theme: _currentTheme,
       onAyahTapped: (surah, ayah) => _handleAyahTap(surah, ayah),
       fontSize: _quranFontSize,
-      fontFamily: _selectedFont,
+       fontFamily: _selectedFont,
       edition: _selectedEdition,
       pageController: _pageController,
+      onZoomChanged: (zoomed) {
+        if (mounted && _isPageZoomed != zoomed) {
+          setState(() => _isPageZoomed = zoomed);
+        }
+      },
     );
   }
 
@@ -1159,73 +1265,85 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
               ),
               child: Row(
                 children: [
-                  // Fihris (Index) Button 📑
-                  _PremiumIconButton(
-                    icon: Icons.menu_book_rounded,
-                    onPressed: _showQuickFihris,
-                  ),
-                  const SizedBox(width: 8),
-
-                  _PremiumIconButton(
-                    icon: Icons.self_improvement_rounded,
-                    onPressed: _enterSanctuaryMode,
-                  ),
-                  const SizedBox(width: 8),
-
-                  // زر وضع القراءة (Vertical vs Horizontal)
-                  _PremiumIconButton(
-                    icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
-                    onPressed: () async {
-                      final newMode = !_isVerticalMode;
-                      setState(() {
-                         _isVerticalMode = newMode;
-                      });
-                      await SettingsService.setReadingMethod(
-                        newMode ? ReadingMethod.scroll : ReadingMethod.pages
-                      );
-                      HapticFeedback.mediumImpact();
-                    },
-                  ),
-                  const SizedBox(width: 8),
-
-                  // زر الإعدادات (Real Mushaf Settings)
-                  _PremiumIconButton(
-                    icon: Icons.settings_rounded,
-                    onPressed: _showSettings,
-                  ),
-                  const SizedBox(width: 8),
-                  
-                  _PremiumIconButton(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-
-                  // Session Timer ⏱️
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _richGold.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.timer_outlined, color: _richGold.withValues(alpha: 0.6), size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          _sessionTimeDisplay,
-                          style: GoogleFonts.outfit(
-                            color: _richGold.withValues(alpha: 0.7),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                  // 🎠Scrollable Buttons Group to prevent overflow
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Fihris (Index) Button 📑
+                          _PremiumIconButton(
+                            icon: Icons.menu_book_rounded,
+                            onPressed: _showQuickFihris,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+        
+                          _PremiumIconButton(
+                            icon: Icons.self_improvement_rounded,
+                            onPressed: _enterSanctuaryMode,
+                          ),
+                          const SizedBox(width: 8),
+        
+                          // زر وضع القراءة (Vertical vs Horizontal)
+                          _PremiumIconButton(
+                            icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
+                            onPressed: () async {
+                              final newMode = !_isVerticalMode;
+                              setState(() {
+                                 _isVerticalMode = newMode;
+                              });
+                              await SettingsService.setReadingMethod(
+                                newMode ? ReadingMethod.scroll : ReadingMethod.pages
+                              );
+                              HapticFeedback.mediumImpact();
+                            },
+                          ),
+                          const SizedBox(width: 8),
+        
+                          // زر الإعدادات (Real Mushaf Settings)
+                          _PremiumIconButton(
+                            icon: Icons.settings_rounded,
+                            onPressed: _showSettings,
+                          ),
+                          const SizedBox(width: 8),
+                          
+                          _PremiumIconButton(
+                            icon: Icons.arrow_back_ios_new_rounded,
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+        
+                          // Session Timer ⏱️
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0x14FFD700), // GOLD 8%
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.timer_outlined, color: Color(0x99FFD700), size: 14),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _sessionTimeDisplay,
+                                  style: GoogleFonts.outfit(
+                                    color: const Color(0xB3FFD700), // GOLD 70%
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
-                  const Spacer(),
+                  const SizedBox(width: 12),
 
                   // معلومات السورة والجزء
                   GestureDetector(

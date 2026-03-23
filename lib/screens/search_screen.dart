@@ -5,7 +5,7 @@ import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../widgets/surah_card.dart';
 import '../services/quran_text_service.dart';
-import '../services/search_database_service.dart';
+import '../services/quran_database_service.dart';
 import 'mushaf_viewer_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -304,7 +304,7 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    final queryClean = SearchDatabaseService().removeTashkeel(query.trim());
+    final queryClean = QuranDatabaseService.removeTashkeel(query.trim());
     if (queryClean.isEmpty) {
       return Text(
         uthmaniText,
@@ -318,7 +318,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     for (var i = 0; i < words.length; i++) {
       final String word = words[i];
-      final String wordClean = SearchDatabaseService().removeTashkeel(word);
+      final String wordClean = QuranDatabaseService.removeTashkeel(word);
 
       // Check if word contains the query, or query contains the word (robust partial matching)
       if (wordClean.isNotEmpty && (wordClean.contains(queryClean) || queryClean.contains(wordClean))) {

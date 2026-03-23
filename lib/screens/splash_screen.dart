@@ -10,6 +10,8 @@ import '../services/reading_service.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../services/auth_service.dart';
 
 // ============================================================
 //  Premium Colors for Splash
@@ -138,6 +140,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     // === Phase 1: Logo ===
     _logoController.forward();
+    
+    // 📡 Check Firebase Auth while logo is showing
+    if (mounted) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      // We don't necessarily WAIT for it to finish because it's silent,
+      // but we ensure it was at least triggered.
+      if (authService.isFirebaseReady && !authService.isAuthenticated) {
+        debugPrint('📡 Triggering silent auth during splash...');
+      }
+    }
     
     // Start pre-caching the first page image while logo is shown
     final pageStr = _lastReadPage.toString().padLeft(3, '0');
@@ -380,30 +392,38 @@ class _SplashScreenState extends State<SplashScreen>
   Widget _buildBook(Size screenSize) {
     final bookWidth = screenSize.width * 0.88;
     final bookHeight = bookWidth * 1.42;
+    
+    // 🚀 Overhang Squares: Making the cover slightly larger than the page block
+    // Increased to 8.0 for absolute coverage against perspective gaps.
+    const double overhang = 8.0;
+    final coverWidth = bookWidth;
+    final coverHeight = bookHeight + overhang;
+    
     final coverProgress = _coverOpen.value;
 
     return SizedBox(
       width: bookWidth + 16, // extra for spine
-      height: bookHeight,
+      height: coverHeight,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // === Back cover (always visible below) ===
+          // === 1. Back cover (always visible below) ===
           Positioned(
             left: 16,
             child: _PremiumBookCover(
-              width: bookWidth,
-              height: bookHeight,
+              width: coverWidth,
+              height: coverHeight,
               isBack: true,
             ),
           ),
 
-          // === Page stack below the opening cover ===
+          // === 2. Page stack below the opening cover ===
+          // Centered vertically relative to the larger cover
           Positioned(
             left: 16,
             child: _PageStack(
-              width: bookWidth,
-              height: bookHeight,
+              width: bookWidth - 4, // Slightly inset at the sides
+              height: bookHeight,     // Original page height
               visible: coverProgress > 0.3,
               opacity: ((coverProgress - 0.3) / 0.3).clamp(0.0, 1.0),
               pageNumber: _lastReadPage,
@@ -412,7 +432,20 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // === Front cover (opens with 3D rotation) ===
+          // === 3. Book edge (page thickness) ===
+          // Rendered BEFORE front cover so it's hidden when closed
+          if (coverProgress < 0.5)
+            Positioned(
+              bottom: overhang / 2, // Centered relative to overhang
+              left: 16,
+              right: 0,
+              child: _BookEdge(
+                width: bookWidth - 4, // Match inset page stack
+                visible: coverProgress < 0.4,
+              ),
+            ),
+
+          // === 4. Front cover (opens with 3D rotation) ===
           Positioned(
             left: 16,
             child: Transform(
@@ -423,8 +456,8 @@ class _SplashScreenState extends State<SplashScreen>
               child: Opacity(
                 opacity: (1.0 - coverProgress * 1.3).clamp(0.0, 1.0),
                 child: _PremiumBookCover(
-                  width: bookWidth,
-                  height: bookHeight,
+                  width: coverWidth,
+                  height: coverHeight,
                   isBack: false,
                   coverProgress: coverProgress,
                 ),
@@ -432,29 +465,17 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // === Spine (Moved to the right for RTL flow) ===
+          // === 5. Spine (Moved to the right for RTL flow) ===
           Positioned(
             right: 0,
             top: 0,
             bottom: 0,
             child: _BookSpine(
               width: 18,
-              height: bookHeight,
+              height: coverHeight,
               openProgress: coverProgress,
             ),
           ),
-
-          // === Book edge (page thickness) ===
-          if (coverProgress < 0.5)
-            Positioned(
-              bottom: 0,
-              left: 16,
-              right: 0,
-              child: _BookEdge(
-                width: bookWidth,
-                visible: coverProgress < 0.4,
-              ),
-            ),
         ],
       ),
     );
@@ -940,8 +961,9 @@ class _PageStack extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 5,
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 8,
+              spreadRadius: -2,
             ),
           ],
         ),
@@ -950,15 +972,41 @@ class _PageStack extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Actual page content
-              _buildPageContent(),
-              // Ornamental frame on page
+              // 📜 1. Base parchment texture
+              CustomPaint(painter: _PaperTexturePainter()),
+
+              // 📖 2. Actual page content (Actual image from Quran)
+              Padding(
+                padding: const EdgeInsets.all(12.0), // Space for the ornament
+                child: _buildPageContent(),
+              ),
+
+              // 🎨 3. Premium Islamic Ornamental Frame
+              CustomPaint(painter: _IslamicPageBorderPainter()),
+
+              // 🌗 4. Binding Shadow (Realistic crease in the middle)
               Container(
-                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.08),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.05),
+                    ],
+                    stops: const [0.0, 0.05, 1.0],
+                  ),
+                ),
+              ),
+
+              // 🕌 5. Inner decorative frame (thin gold)
+              Container(
+                margin: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: _kDarkGold.withValues(alpha: 0.12),
-                    width: 0.5,
+                    color: _kRichGold.withValues(alpha: 0.2),
+                    width: 0.6,
                   ),
                 ),
               ),
@@ -1175,3 +1223,84 @@ class _GoldParticlesPainter extends CustomPainter {
 }
 
 /// زخرفة الميدالية المركزية - Islamic Medallion Ornament
+
+// ============================================================
+//  NEW PAINTERS FOR PAGE ENHANCEMENT
+// ============================================================
+
+class _PaperTexturePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final random = Random(123);
+    final paint = Paint()..style = PaintingStyle.fill;
+    
+    // Tiny fiber dots
+    for (int i = 0; i < 400; i++) {
+      final x = random.nextDouble() * size.width;
+      final y = random.nextDouble() * size.height;
+      final opacity = random.nextDouble() * 0.03;
+      paint.color = const Color(0xFF8B4513).withValues(alpha: opacity);
+      canvas.drawCircle(Offset(x, y), random.nextDouble() * 1.0, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+class _IslamicPageBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _kRichGold.withValues(alpha: 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    const margin = 10.0;
+    final rect = Rect.fromLTWH(margin, margin, size.width - margin * 2, size.height - margin * 2);
+
+    // 1. Double border frame
+    canvas.drawRect(rect, paint);
+    canvas.drawRect(rect.deflate(2), paint..strokeWidth = 0.5);
+
+    // 2. Corner Arabesque Nodes
+    const nodeSize = 15.0;
+    _drawCornerNode(canvas, const Offset(margin, margin), 0, nodeSize, paint);
+    _drawCornerNode(canvas, Offset(size.width - margin, margin), pi / 2, nodeSize, paint);
+    _drawCornerNode(canvas, Offset(margin, size.height - margin), -pi / 2, nodeSize, paint);
+    _drawCornerNode(canvas, Offset(size.width - margin, size.height - margin), pi, nodeSize, paint);
+    
+    // 3. Side decorative links
+    _drawSideOrnament(canvas, size, paint);
+  }
+
+  void _drawCornerNode(Canvas canvas, Offset center, double rotation, double size, Paint paint) {
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(rotation);
+    
+    final path = Path()
+      ..moveTo(0, 0)
+      ..quadraticBezierTo(size * 0.5, -size * 0.2, size, 0)
+      ..quadraticBezierTo(size * 1.2, size * 0.5, size, size)
+      ..quadraticBezierTo(-size * 0.2, size * 0.5, 0, 0);
+    
+    canvas.drawPath(path, paint..style = PaintingStyle.fill..color = _kRichGold.withValues(alpha: 0.15));
+    canvas.drawPath(path, paint..style = PaintingStyle.stroke..color = _kRichGold.withValues(alpha: 0.4)..strokeWidth = 0.8);
+    
+    canvas.restore();
+  }
+
+  void _drawSideOrnament(Canvas canvas, Size size, Paint paint) {
+    const margin = 10.0;
+
+    // Decoration on left and right sides
+    for (double y in [size.height * 0.3, size.height * 0.7]) {
+      canvas.drawCircle(Offset(margin, y), 2.5, paint..style = PaintingStyle.fill);
+      canvas.drawCircle(Offset(size.width - margin, y), 2.5, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}

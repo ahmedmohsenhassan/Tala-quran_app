@@ -12,8 +12,8 @@ import 'settings_tab.dart';
 import 'mushaf_viewer_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
-  final int autoOpenPage;
-  const MainDashboardScreen({super.key, this.autoOpenPage = 1});
+  final int? autoOpenPage;
+  const MainDashboardScreen({super.key, this.autoOpenPage});
 
   @override
   State<MainDashboardScreen> createState() => _MainDashboardScreenState();
@@ -30,14 +30,14 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
 
     // التعامل مع الفتح التلقائي للمصحف بعد أول إطار - لضمان ثبات التنقل
     // Handle auto-opening Mushaf after first frame to ensure stable navigation
-    if (widget.autoOpenPage > 1) {
+    if (widget.autoOpenPage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) =>
-                  MushafViewerScreen(initialPage: widget.autoOpenPage),
+                  MushafViewerScreen(initialPage: widget.autoOpenPage!),
             ),
           );
         }

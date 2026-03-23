@@ -8,6 +8,8 @@ class MushafSettingsDialog extends StatefulWidget {
   final Function(String) onFontChanged;
   final Function(String) onThemeChanged;
   final Function(String) onEditionChanged;
+  final bool showTajweed; // 🖌️ New for Phase 103
+  final Function(bool) onTajweedChanged; // 🖌️ New for Phase 103
 
   const MushafSettingsDialog({
     super.key,
@@ -16,6 +18,8 @@ class MushafSettingsDialog extends StatefulWidget {
     required this.onFontChanged,
     required this.onThemeChanged,
     required this.onEditionChanged,
+    required this.showTajweed,
+    required this.onTajweedChanged,
   });
 
   @override
@@ -28,6 +32,7 @@ class _MushafSettingsDialogState extends State<MushafSettingsDialog> {
   String _selectedFont = ThemeService.fontAmiri;
   String _selectedTheme = ThemeService.mushafClassic;
   String _selectedEdition = ThemeService.editionMadina1405;
+  bool _showTajweed = false; // 🖌️ New for Phase 103
 
   @override
   void initState() {
@@ -49,6 +54,7 @@ class _MushafSettingsDialogState extends State<MushafSettingsDialog> {
         _selectedFont = font;
         _selectedTheme = theme;
         _selectedEdition = edition;
+        _showTajweed = widget.showTajweed;
       });
     }
   }
@@ -198,6 +204,55 @@ class _MushafSettingsDialogState extends State<MushafSettingsDialog> {
                 _buildEditionCard("المدينة ١٤٠٥هـ", ThemeService.editionMadina1405),
                 _buildEditionCard("المدينة ١٤٢٢هـ", ThemeService.editionMadina1422),
                 _buildEditionCard("رواية ورش", ThemeService.editionWarsh),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Tajweed Toggle 🎨
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.withValues(alpha: 0.1)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Switch(
+                  value: _showTajweed,
+                  onChanged: (val) {
+                    setState(() => _showTajweed = val);
+                    widget.onTajweedChanged(val);
+                  },
+                  activeThumbColor: Colors.green,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        "تلوين التجويد",
+                        style: GoogleFonts.amiri(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade900,
+                        ),
+                      ),
+                      Text(
+                        "إظهار قواعد التجويد بالألوان",
+                        style: GoogleFonts.amiri(
+                          fontSize: 12,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.color_lens_rounded, color: Colors.green),
               ],
             ),
           ),

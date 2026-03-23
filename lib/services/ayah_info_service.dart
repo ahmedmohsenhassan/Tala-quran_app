@@ -4,10 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:dio/dio.dart';
 
 /// 🎯 خدمة إحداثيات الآيات — Ayah Info Service
 /// مسؤول عن جلب إحداثيات (X, Y) لكل كلمة وآية من قاعدة بيانات SQLite
+/// 
+/// ⚠️ هذه الخدمة تعمل فقط إذا كان ملف ayahinfo.db موجوداً محلياً مسبقاً.
+/// لم يعد يتم تحميله من الإنترنت — 100% Offline Architecture.
+/// إذا لم يكن الملف موجوداً، ترجع الدوال بيانات فارغة بدون crash.
 class AyahInfoService {
   static final AyahInfoService _instance = AyahInfoService._internal();
   factory AyahInfoService() => _instance;
@@ -15,9 +18,8 @@ class AyahInfoService {
 
   Database? _db;
   static const String _dbFileName = 'ayahinfo.db';
-  static const String _remoteDbUrl = 'https://raw.githubusercontent.com/quran/quran-android/master/app/src/main/assets/databases/ayahinfo.db';
 
-  /// تهيئة قاعدة البيانات — Initialize/Download DB
+  /// تهيئة قاعدة البيانات — Initialize DB (Local Only)
   Future<void> initialize() async {
     if (_db != null) return;
 
@@ -25,23 +27,12 @@ class AyahInfoService {
     final dbPath = join(docDir.path, _dbFileName);
     final dbFile = File(dbPath);
 
-    // 1. تنزيل قاعدة البيانات إذا لم تكن موجودة
-    if (!await dbFile.exists()) {
-      debugPrint('📡 Downloading ayahinfo.db...');
-      try {
-        await Dio(BaseOptions(
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 30),
-        )).download(_remoteDbUrl, dbPath);
-        debugPrint('✅ ayahinfo.db downloaded successfully.');
-      } catch (e) {
-        debugPrint('❌ Failed to download ayahinfo.db: $e');
-        return;
-      }
+    if (await dbFile.exists()) {
+      _db = await openDatabase(dbPath, readOnly: true);
+      debugPrint('✅ [AyahInfo] Local DB found and opened.');
+    } else {
+      debugPrint('ℹ️ [AyahInfo] No local ayahinfo.db found. Coordinate features disabled.');
     }
-
-    // 2. فتح قاعدة البيانات
-    _db = await openDatabase(dbPath, readOnly: true);
   }
 
   /// جلب إحداثيات آية معينة في صفحة — Get Bounding Boxes for an Ayah
@@ -50,8 +41,6 @@ class AyahInfoService {
     if (_db == null) return [];
 
     try {
-      // الاستعلام عن المربعات المحيطة (Bounding Boxes) للآية
-      // ملاحظة: أسماء الجداول والأعمدة قد تختلف حسب نسخة الـ DB (عادة glyphs أو ayah_info)
       final List<Map<String, dynamic>> results = await _db!.query(
         'glyphs',
         where: 'page_number = ? AND sura_number = ? AND ayah_number = ?',

@@ -8,7 +8,8 @@ import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/download_service.dart';
 import 'dart:io';
-import '../services/ayah_info_service.dart'; // 🎯 New for Phase 63
+import '../services/ayah_info_service.dart';
+import '../services/tajweed_parser.dart'; // 🎨 New for Phase 103
 
 class MushafPageRenderer extends StatefulWidget {
   final int pageNumber;
@@ -21,7 +22,9 @@ class MushafPageRenderer extends StatefulWidget {
   final String fontFamily;
   final String edition;
   final String? highlightedWordLocation; // 🎙️ For word-by-word sync
+  final bool showTajweed; // 🖌️ New for Phase 103
   final PageController? pageController;
+  final Function(bool isZoomed)? onZoomChanged;
 
   const MushafPageRenderer({
     super.key,
@@ -35,7 +38,9 @@ class MushafPageRenderer extends StatefulWidget {
     this.fontFamily = ThemeService.fontAmiri,
     this.edition = ThemeService.editionMadina1405,
     this.highlightedWordLocation,
+    this.showTajweed = false,
     this.pageController,
+    this.onZoomChanged,
   });
 
   @override
@@ -54,7 +59,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
   final DownloadService _downloadService = DownloadService();
   final AyahInfoService _ayahInfoService = AyahInfoService();
   Map<String, List<Rect>> _ayahRects = {};
-  bool _isDownloading = false; // 📥 New for Phase 64
+  bool _isDownloading = false;
 
   @override
   void initState() {
@@ -74,8 +79,10 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     if (mounted) {
       if (scale > 1.05 && !_isZoomed) {
         setState(() => _isZoomed = true);
+        widget.onZoomChanged?.call(true);
       } else if (scale <= 1.05 && _isZoomed) {
         setState(() => _isZoomed = false);
+        widget.onZoomChanged?.call(false);
       }
     }
   }
@@ -83,7 +90,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
   @override
   void didUpdateWidget(MushafPageRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.pageNumber != widget.pageNumber) {
+    if (oldWidget.pageNumber != widget.pageNumber || oldWidget.showTajweed != widget.showTajweed) {
       _loadPageData();
       _transformationController.value = Matrix4.identity();
       _isZoomed = false;
@@ -98,8 +105,9 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
       final localImg = await _downloadService.getLocalPageImage(widget.pageNumber);
       final rects = await _ayahInfoService.getPageAyahMap(widget.pageNumber);
       
+      
       if (mounted) {
-        debugPrint('📖 Page ${widget.pageNumber}: Words=${data.length}, Rects=${rects.length}, Image=${localImg != null}');
+        debugPrint('📖 Page \${widget.pageNumber}: Words=\${data.length}, Rects=\${rects.length}');
         setState(() {
           _pageData = data;
           _localImage = localImg;
@@ -199,7 +207,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                   maxScale: 4.0,
                   panEnabled: _isZoomed,
                   scaleEnabled: true,
-                  boundaryMargin: const EdgeInsets.all(20),
+                  boundaryMargin: _isZoomed ? const EdgeInsets.all(250) : EdgeInsets.zero,
                   child: Stack(
                     children: [
                       // A. Visual Layer (Local Image or Fallback Text)
@@ -533,23 +541,45 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                       ),
                       child: Opacity(
                         opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
-                        child: Text(
-                          cleanText,
-                          style: widget.fontFamily == ThemeService.fontAmiri 
-                            ? GoogleFonts.amiri(
-                                fontSize: widget.fontSize, 
-                                color: isTransparent ? Colors.transparent : _textColor,
-                                fontWeight: FontWeight.w500,
-                                height: 1.1,
-                              )
-                            : TextStyle(
-                                fontFamily: widget.fontFamily,
-                                fontStyle: FontStyle.normal, // Ensure no italics from serifs
-                                fontSize: widget.fontSize,
-                                color: isTransparent ? Colors.transparent : _textColor,
-                                height: 1.1,
+                        child: widget.showTajweed && w['text_tajweed'] != null
+                          ? RichText(
+                              textDirection: TextDirection.rtl,
+                              text: TextSpan(
+                                children: TajweedParser.parse(
+                                  w['text_tajweed']!,
+                                  widget.fontFamily == ThemeService.fontAmiri 
+                                    ? GoogleFonts.amiri(
+                                        fontSize: widget.fontSize, 
+                                        color: isTransparent ? Colors.transparent : _textColor,
+                                        fontWeight: FontWeight.w500,
+                                        height: 1.1,
+                                      )
+                                    : TextStyle(
+                                        fontFamily: widget.fontFamily,
+                                        fontSize: widget.fontSize,
+                                        color: isTransparent ? Colors.transparent : _textColor,
+                                        height: 1.1,
+                                      ),
+                                ),
                               ),
-                        ),
+                            )
+                          : Text(
+                              cleanText,
+                              style: widget.fontFamily == ThemeService.fontAmiri 
+                                ? GoogleFonts.amiri(
+                                    fontSize: widget.fontSize, 
+                                    color: isTransparent ? Colors.transparent : _textColor,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.1,
+                                  )
+                                : TextStyle(
+                                    fontFamily: widget.fontFamily,
+                                    fontStyle: FontStyle.normal,
+                                    fontSize: widget.fontSize,
+                                    color: isTransparent ? Colors.transparent : _textColor,
+                                    height: 1.1,
+                                  ),
+                            ),
                       ),
                     ),
                   ),
