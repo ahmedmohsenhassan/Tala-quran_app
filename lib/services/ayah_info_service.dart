@@ -61,6 +61,51 @@ class AyahInfoService {
     }
   }
 
+  /// جلب كافة كلمات الآية مع إحداثياتها بترتيب القراءة
+  /// Get All Word Rects for an Ayah in reading order
+  Future<List<Rect>> getAyahWordRects(int page, int surah, int ayah) async {
+    if (_db == null) await initialize();
+    if (_db == null) return [];
+
+    try {
+      // نعتمد على عمود position لضمان الترتيب الصحيح للكلمات
+      final List<Map<String, dynamic>> results = await _db!.query(
+        'glyphs',
+        where: 'page_number = ? AND sura_number = ? AND ayah_number = ?',
+        whereArgs: [page, surah, ayah],
+        orderBy: 'position ASC',
+      );
+
+      // تجميع الـ glyphs التي تنتمي لنفس الـ position (الكلمة)
+      // في بعض قواعد البيانات، الكلمة قد تتكون من عدة glyphs
+      final Map<int, List<Rect>> wordGroups = {};
+      for (var row in results) {
+        final pos = row['position'] as int;
+        final rect = Rect.fromLTRB(
+          (row['min_x'] as num).toDouble(),
+          (row['min_y'] as num).toDouble(),
+          (row['max_x'] as num).toDouble(),
+          (row['max_y'] as num).toDouble(),
+        );
+        wordGroups.putIfAbsent(pos, () => []).add(rect);
+      }
+
+      // دمج المستطيلات لكل كلمة للحصول على مستطيل واحد يغطي الكلمة كاملة
+      final List<Rect> wordRects = [];
+      final sortedPositions = wordGroups.keys.toList()..sort();
+      
+      for (var pos in sortedPositions) {
+        final rects = wordGroups[pos]!;
+        wordRects.add(rects.reduce((a, b) => a.expandToInclude(b)));
+      }
+      
+      return wordRects;
+    } catch (e) {
+      debugPrint('❌ Error querying ayah word rects: $e');
+      return [];
+    }
+  }
+
   /// جلب إحداثيات كلمة معينة — Get Word Bounding Box
   Future<Rect?> getWordRect(int page, int surah, int ayah, int position) async {
     if (_db == null) await initialize();

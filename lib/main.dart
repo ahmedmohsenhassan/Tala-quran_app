@@ -20,6 +20,10 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_khatma_service.dart';
 import 'services/firestore_sync_service.dart';
+import 'services/user_sync_service.dart';
+import 'services/content_download_service.dart';
+import 'services/achievement_service.dart';
+import 'services/spiritual_theme_service.dart';
 
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
@@ -113,6 +117,10 @@ void main() async {
           Provider(create: (_) => FirebaseKhatmaService()),
           // 📡 Syncing service
           Provider(create: (_) => FirestoreSyncService()),
+          ChangeNotifierProvider(create: (_) => UserSyncService()),
+          ChangeNotifierProvider(create: (_) => ContentDownloadService()),
+          ChangeNotifierProvider(create: (_) => AchievementService()..init()),
+          ChangeNotifierProvider(create: (_) => SpiritualThemeService()),
         ],
         child: const TalaQuranApp(),
       ),

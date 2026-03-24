@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'user_sync_service.dart';
 
 /// خدمة العلامات المرجعية
 /// Bookmark service for saving reading progress
@@ -33,6 +34,7 @@ class BookmarkService {
     bookmarks.insert(0, bookmark);
 
     await prefs.setString(_bookmarksKey, json.encode(bookmarks));
+    UserSyncService().pushUpdate();
   }
 
   /// تحديث الملاحظة على علامة مرجعية موجودة
@@ -53,6 +55,7 @@ class BookmarkService {
     }
 
     await prefs.setString(_bookmarksKey, json.encode(bookmarks));
+    UserSyncService().pushUpdate();
   }
 
   /// حذف علامة مرجعية لآية
@@ -65,6 +68,7 @@ class BookmarkService {
         b['surahNumber'] == surahNumber && b['ayahNumber'] == ayahNumber);
 
     await prefs.setString(_bookmarksKey, json.encode(bookmarks));
+    UserSyncService().pushUpdate();
   }
 
   /// الحصول على كل علامات الآيات
@@ -99,6 +103,7 @@ class BookmarkService {
     bookmarks.insert(0, bookmark);
 
     await prefs.setString(_pageBookmarksKey, json.encode(bookmarks));
+    UserSyncService().pushUpdate();
   }
 
   /// حذف علامة مرجعية لصفحة
@@ -110,6 +115,7 @@ class BookmarkService {
     bookmarks.removeWhere((b) => b['pageNumber'] == pageNumber);
 
     await prefs.setString(_pageBookmarksKey, json.encode(bookmarks));
+    UserSyncService().pushUpdate();
   }
 
   /// الحصول على كل علامات الصفحات
@@ -142,6 +148,7 @@ class BookmarkService {
           'pageNumber': pageNumber,
           'timestamp': DateTime.now().toIso8601String(),
         }));
+    UserSyncService().pushUpdate();
   }
 
   /// الحصول على آخر موضع قراءة
@@ -155,5 +162,23 @@ class BookmarkService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Bulk save for cloud sync
+  static Future<void> saveAllBookmarks(List<Map<String, dynamic>> bookmarks) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_bookmarksKey, json.encode(bookmarks));
+  }
+
+  /// Bulk save for cloud sync
+  static Future<void> saveAllPageBookmarks(List<Map<String, dynamic>> bookmarks) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pageBookmarksKey, json.encode(bookmarks));
+  }
+
+  /// Direct save for cloud sync
+  static Future<void> saveLastReadRaw(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastReadKey, json.encode(data));
   }
 }

@@ -14,7 +14,7 @@ class JuzListScreen extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [

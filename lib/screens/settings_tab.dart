@@ -5,8 +5,10 @@ import '../utils/app_colors.dart';
 import 'theme_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'premium_settings_screen.dart';
-import 'offline_library_screen.dart';
+import 'content_manager_screen.dart';
 import '../services/kids_mode_service.dart';
+import '../services/auth_service.dart';
+import '../services/user_sync_service.dart';
 import 'package:provider/provider.dart';
 
 class SettingsTab extends StatelessWidget {
@@ -17,7 +19,7 @@ class SettingsTab extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
@@ -26,7 +28,7 @@ class SettingsTab extends StatelessWidget {
               floating: true,
               pinned: true,
               elevation: 0,
-              backgroundColor: AppColors.background,
+              backgroundColor: Colors.transparent,
               centerTitle: true,
               title: Text(
                 'الإعدادات',
@@ -90,12 +92,12 @@ class SettingsTab extends StatelessWidget {
                   const SizedBox(height: 16),
                   _buildSettingsCard(
                     icon: Icons.library_books_rounded,
-                    title: 'المكتبة الأوفلاين',
-                    subtitle: 'إدارة التفاسير والتراجم المحملة على جهازك',
+                    title: 'مدير المحتوى أوفلاين',
+                    subtitle: 'إدارة وتنزيل التفاسير والتراجم للاستخدام بدون إنترنت',
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const OfflineLibraryScreen()),
+                        MaterialPageRoute(builder: (_) => const ContentManagerScreen()),
                       );
                     },
                   ),
@@ -111,6 +113,140 @@ class SettingsTab extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const PremiumSettingsScreen()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildSectionTitle('المزامنة السحابية والنسخ الاحتياطي'),
+                  const SizedBox(height: 16),
+                  Consumer2<AuthService, UserSyncService>(
+                    builder: (context, auth, sync, child) {
+                      final user = auth.currentUser;
+                      final isAnonymous = user?.isAnonymous ?? true;
+
+                      return Column(
+                        children: [
+                          if (isAnonymous)
+                            _buildSettingsCard(
+                              icon: Icons.cloud_upload_outlined,
+                              title: 'حفظ التقدم سحابياً',
+                              subtitle: 'قم بتسجيل الدخول بـ Google لحفظ علاماتك المرجعية ومزامنتها عبر أجهزتك',
+                              onTap: () async {
+                                try {
+                                  await auth.linkWithGoogle();
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('تم ربط الحساب بنجاح!')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('فشل ربط الحساب: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: AppColors.cardBackground,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.emerald.withValues(alpha: 0.05),
+                                    AppColors.gold.withValues(alpha: 0.05),
+                                  ],
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      CircleAvatar(
+                                        backgroundImage: user?.photoURL != null 
+                                            ? NetworkImage(user!.photoURL!) 
+                                            : null,
+                                        backgroundColor: AppColors.emerald.withValues(alpha: 0.1),
+                                        child: user?.photoURL == null 
+                                            ? Icon(Icons.person, color: AppColors.emerald) 
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              user?.displayName ?? 'مستخدم تلا',
+                                              style: GoogleFonts.amiri(
+                                                color: AppColors.textPrimary,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              user?.email ?? '',
+                                              style: GoogleFonts.amiri(
+                                                color: AppColors.textMuted,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
+                                        onPressed: () => auth.signOut(),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(height: 32),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            sync.isSyncing ? 'جاري المزامنة...' : 'تمت المزامنة بنجاح',
+                                            style: GoogleFonts.amiri(
+                                              color: sync.isSyncing ? AppColors.gold : AppColors.emerald,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          if (sync.lastSyncTime != null)
+                                            Text(
+                                              'آخر مزامنة: ${sync.lastSyncTime!.hour}:${sync.lastSyncTime!.minute}',
+                                              style: GoogleFonts.amiri(
+                                                color: AppColors.textMuted,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      ElevatedButton.icon(
+                                        onPressed: sync.isSyncing ? null : () => sync.syncFull(),
+                                        icon: sync.isSyncing 
+                                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                            : const Icon(Icons.sync_rounded, size: 18),
+                                        label: const Text('مزامنة الآن'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.emerald,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),

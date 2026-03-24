@@ -23,11 +23,13 @@ import '../services/reading_stats_service.dart';
 import '../services/quran_text_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
+import '../services/ayah_info_service.dart';
 import '../widgets/mushaf_page_renderer.dart';
 import '../widgets/mushaf_settings_dialog.dart';
 import '../widgets/ayah_interaction_bubble.dart';
 import '../widgets/mushaf_navigation_picker.dart';
 import 'tafseer_screen.dart';
+import '../widgets/tala_ai_insight_panel.dart'; // 🤖 New for Phase 123
 
 // ============================================================
 //  PREMIUM COLORS & THEME HELPERS
@@ -157,6 +159,12 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   bool _isScrubbing = false;
   bool _isPageZoomed = false;
   bool _showTajweed = false; // 🖌️ New for Phase 103
+  
+  // 🎙️ Live Recitation State (Phase 115)
+  int? _currentReadingWordIndex;
+  List<Rect> _currentAyahWordRects = [];
+  StreamSubscription<int>? _recitationSubscription;
+  bool _isLiveRecitationActive = false;
   
   // 📡 Collaborative Khatma State (Phase 105)
   late final FirebaseKhatmaService _firebaseKhatma;
@@ -319,6 +327,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     // Stop session timer and save reading time ⏱️
     _sessionStopwatch.stop();
     _sessionTickTimer?.cancel();
+    _recitationSubscription?.cancel();
     final minutes = _sessionStopwatch.elapsed.inMinutes;
     if (minutes > 0) {
       ReadingStatsService.recordSessionTime(minutes: minutes);
@@ -530,7 +539,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   Widget build(BuildContext context) {
     final kidsMode = Provider.of<KidsModeService>(context);
     final isKids = kidsMode.isKidsModeActive;
-    final primaryColor = isKids ? kidsMode.primaryColor : _richGold;
     final bgColor = isKids ? kidsMode.backgroundColor : _deepGreen;
 
     return Scaffold(
@@ -553,6 +561,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     key: const ValueKey('mushaf_book_frame'),
                     child: _buildBookFrame(),
                   ),
+
+                  // === 🎙️ Live Recitation Word Highlights (Phase 115) ===
+                  if (_isLiveRecitationActive && _currentAyahWordRects.isNotEmpty && _currentReadingWordIndex != null)
+                    _buildLiveRecitationOverlay(),
 
                   // === محراب التلاوة Overlay ===
                   if (_isSanctuaryMode)
@@ -656,137 +668,215 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     Positioned(
                       bottom: 100,
                       right: 24,
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: const Duration(milliseconds: 500),
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: child,
-                          );
-                        },
-                        child: FloatingActionButton(
-                          onPressed: () => _openAITajweedLab(),
-                          backgroundColor: isKids ? primaryColor : AppColors.gold,
-                          elevation: 8,
-                          child: Icon(isKids ? Icons.face_rounded : Icons.psychology_rounded, color: Colors.white, size: 30),
-                        ),
+                      child: _buildAIBtn(
+                        icon: Icons.psychology_rounded,
+                        color: AppColors.gold,
+                        onTap: () => _openAITajweedLab(),
+                        label: 'مختبر التجويد',
                       ),
                     ),
+
+                  // === 🤖 Tala AI Insight Portal (Phase 123) ===
+                  if (_showBars && !_showAudioPlayer)
+                    Positioned(
+                      bottom: 180,
+                      right: 24,
+                      child: _buildAIBtn(
+                        icon: Icons.auto_awesome_rounded,
+                        color: Colors.deepPurpleAccent,
+                        onTap: () => _showAIInsights(),
+                        label: 'Tala AI',
+                        isGlow: true,
+                      ),
+                    ),
+
                   // === زر التعرّف على التلاوة (🎙️) ===
                   if (_showBars && !_showAudioPlayer)
                     Positioned(
                     bottom: 100,
                     left: 24,
-                    child: TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      duration: const Duration(milliseconds: 600),
-                      builder: (context, value, child) {
-                        return Transform.scale(
-                          scale: value,
-                          child: child,
-                        );
-                      },
-                      child: FloatingActionButton(
-                        onPressed: () => _recognizeCurrentRecitation(),
-                        backgroundColor: Colors.blueAccent,
-                        elevation: 8,
-                        child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 30),
-                      ),
+                    child: _buildAIBtn(
+                      icon: _isLiveRecitationActive ? Icons.stop_rounded : Icons.mic_rounded,
+                      color: _isLiveRecitationActive ? Colors.redAccent : Colors.blueAccent,
+                      onTap: () => _recognizeCurrentRecitation(),
+                      label: 'التعرف الصوتي',
                     ),
                   ),
+
+                  // === 📏 Premium Side Progress Rail ===
+                  if (!_isSanctuaryMode)
+                    _buildSideProgressRail(),
                 ],
               ),
             ),
     );
   }
 
-  void _recognizeCurrentRecitation() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.auto_awesome, color: Colors.white),
-            SizedBox(width: 8),
-            Text('جاري التعرف (أوفلاين)... اقرأ بضع كلمات'),
+  Widget _buildAIBtn({
+    required IconData icon, 
+    required Color color, 
+    required VoidCallback onTap, 
+    required String label,
+    bool isGlow = false,
+  }) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 500),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          child: Opacity(opacity: value, child: child),
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: isGlow ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.5),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                )
+              ] : null,
+            ),
+            child: FloatingActionButton(
+              heroTag: 'ai_btn_$label',
+              onPressed: onTap,
+              backgroundColor: color,
+              elevation: 8,
+              child: Icon(icon, color: Colors.white, size: 28),
+            ),
+          ),
+          if (_showBars) ...[
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: GoogleFonts.amiri(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
-        ),
-        duration: Duration(seconds: 4),
-        backgroundColor: Colors.blueAccent,
+        ],
       ),
     );
+  }
 
-    final result = await RecitationRecognitionService().recognizeAyah();
-    
-    if (!mounted) return;
-
-    if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('لم يتم التعرف على الآية. حاول التحدث بوضوح أكثر (تعمل 100% بدون إنترنت).'),
-          backgroundColor: Colors.redAccent,
+  Widget _buildSideProgressRail() {
+    return Positioned(
+      right: 4,
+      top: 150,
+      bottom: 150,
+      child: Container(
+        width: 4,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(2),
         ),
-      );
+        child: Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            // Active Progress Line
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              width: 4,
+              height: (MediaQuery.of(context).size.height - 300) * (_currentPage / 604),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.gold.withValues(alpha: 0.2), AppColors.gold],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Floating Star Marker
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 500),
+              top: (MediaQuery.of(context).size.height - 300) * (_currentPage / 604) - 8,
+              child: const Icon(Icons.star_rounded, color: AppColors.gold, size: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _recognizeCurrentRecitation() async {
+    if (_isLiveRecitationActive) {
+      _stopLiveRecitation();
       return;
     }
 
-    final surahName = QuranPageHelper.surahNames[result.surah - 1];
+    final int surah = QuranPageHelper.getSurahForPage(_currentPage);
+    final int ayah = _activeAyah ?? 1;
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.background,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'تم التعرّف على الآية 🎙️',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.amiri(color: AppColors.gold, fontWeight: FontWeight.bold),
+    HapticFeedback.heavyImpact();
+    setState(() {
+      _isLiveRecitationActive = true;
+      _currentReadingWordIndex = null;
+      _currentAyahWordRects = [];
+    });
+
+    // 1. Fetch word coordinates for the target Ayah
+    final rects = await AyahInfoService().getAyahWordRects(_currentPage, surah, ayah);
+    if (!mounted) return;
+
+    setState(() {
+      _currentAyahWordRects = rects;
+    });
+
+    // 2. Start the service
+    final service = RecitationRecognitionService();
+    _recitationSubscription?.cancel();
+    _recitationSubscription = service.wordMatchStream.listen((index) {
+      if (mounted) {
+        setState(() {
+          _currentReadingWordIndex = index;
+        });
+        HapticFeedback.selectionClick();
+      }
+    });
+
+    await service.startLiveRecitation(surah, ayah);
+  }
+
+  void _stopLiveRecitation() {
+    RecitationRecognitionService().stop();
+    _recitationSubscription?.cancel();
+    setState(() {
+      _isLiveRecitationActive = false;
+      _currentReadingWordIndex = null;
+      _currentAyahWordRects = [];
+    });
+  }
+
+  Widget _buildLiveRecitationOverlay() {
+    // نستخدم التحجيم المناسب للإحداثيات بناءً على حجم الشاشة وموقع الصفحة
+    // ملاحظة: MushafPageRenderer يقوم بالتحجيم داخلياً، لذا سنحتاج لتمرير الإحداثيات له أو الرسم فوقه
+    // للتبسيط في هذه المرحلة، نستخدم CustomPaint فوق الـ PageView
+    return IgnorePointer(
+      child: CustomPaint(
+        painter: _WordHighlightPainter(
+          rects: _currentAyahWordRects,
+          currentIndex: _currentReadingWordIndex!,
+          glowColor: _richGold.withValues(alpha: 0.4),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              result.text,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.amiri(fontSize: 22, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.gold.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
-              ),
-              child: Text(
-                'سورة $surahName - آية ${result.ayah}',
-                style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.spaceEvenly,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('إلغاء', style: GoogleFonts.amiri(color: Colors.grey, fontSize: 16)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.gold,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _navigateToAyah(result.surah, result.ayah);
-            },
-            child: Text('الذهاب للآية', style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-        ],
       ),
+    );
+  }
+
+  void _showAIInsights() {
+    HapticFeedback.heavyImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => TalaAIInsightPanel(pageNumber: _currentPage),
     );
   }
 
@@ -2604,3 +2694,62 @@ class _CylindricalPageClipper extends CustomClipper<Path> {
   bool shouldReclip(_CylindricalPageClipper oldClipper) => oldClipper.progress != progress;
 }
 
+// ============================================================
+//  CUSTOM PAINTERS & WIDGETS (Phase 115)
+// ============================================
+
+class _WordHighlightPainter extends CustomPainter {
+  final List<Rect> rects;
+  final int currentIndex;
+  final Color glowColor;
+
+  _WordHighlightPainter({
+    required this.rects,
+    required this.currentIndex,
+    required this.glowColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (currentIndex < 0 || currentIndex >= rects.length) return;
+
+    final rect = rects[currentIndex];
+    
+    // 💡 التحجيم: إحداثيات glyphs مبنية على حجم صفحة (1164x1800) أو مشابه
+    // نحتاج للتحويل إلى حجم الـ Canvas الحالي (size)
+    const double originalWidth = 1111; 
+    const double originalHeight = 1695; 
+    
+    final double scaleX = size.width / originalWidth;
+    final double scaleY = size.height / originalHeight;
+
+    final scaledRect = Rect.fromLTRB(
+      rect.left * scaleX,
+      rect.top * scaleY,
+      rect.right * scaleX,
+      rect.bottom * scaleY,
+    );
+
+    final paint = Paint()
+      ..color = glowColor
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(scaledRect.inflate(6), const Radius.circular(8)),
+      paint,
+    );
+
+    // Core Highlight
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(scaledRect.inflate(2), const Radius.circular(4)),
+      Paint()
+        ..color = glowColor.withValues(alpha: 0.9)
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _WordHighlightPainter oldDelegate) {
+    return oldDelegate.currentIndex != currentIndex || oldDelegate.rects != rects;
+  }
+}

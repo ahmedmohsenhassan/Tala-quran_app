@@ -110,9 +110,37 @@ class FirebaseKhatmaService {
     final user = _auth.currentUser;
     if (user == null) return;
 
+    // 1. Update personal progress in the specific khatma
     await _db.collection('shared_khatmas').doc(khatmaId).update({
-      'progress.\${user.uid}': pagesRead,
+      'progress.${user.uid}': FieldValue.increment(pagesRead),
+      'lastUpdated': FieldValue.serverTimestamp(),
     });
+
+    // 📡 Add to activity log for gamification
+    await _db.collection('shared_khatmas').doc(khatmaId).collection('activity').add({
+      'uid': user.uid,
+      'displayName': user.displayName ?? 'مشارك تالا',
+      'pages': pagesRead,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Update global community stats (Atomic Increment)
+    await _updateGlobalStats(pagesRead);
+  }
+
+  /// تحديث إحصائيات المجتمع العالمية
+  Future<void> _updateGlobalStats(int pagesRead) async {
+    final globalDoc = _db.collection('app_stats').doc('global');
+    await globalDoc.set({
+      'totalAyahsRead': FieldValue.increment(pagesRead * 15), // Approximate 15 ayahs per page
+      'totalParticipants': FieldValue.increment(0), // Just to ensure doc exists
+      'lastUpdate': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// الحصول على إحصائيات المجتمع الحالية
+  Stream<Map<String, dynamic>> streamGlobalStats() {
+    return _db.collection('app_stats').doc('global').snapshots().map((doc) => doc.data() ?? {});
   }
 
   /// الحصول على الختمات المشترك بها — Stream of khatmas the user is part of
@@ -172,5 +200,34 @@ class FirebaseKhatmaService {
         .doc(khatmaId)
         .snapshots()
         .map((doc) => SharedKhatma.fromFirestore(doc));
+  }
+
+  /// Stream recent activity for a specific khatma
+  Stream<List<Map<String, dynamic>>> streamKhatmaActivity(String khatmaId) {
+    return _db
+        .collection('shared_khatmas')
+        .doc(khatmaId)
+        .collection('activity')
+        .orderBy('timestamp', descending: true)
+        .limit(20)
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) => doc.data()).toList());
+  }
+
+  /// Get leaderboard for a khatma (sorted by progress)
+  Stream<List<Map<String, dynamic>>> streamLeaderboard(String khatmaId) {
+    return _db.collection('shared_khatmas').doc(khatmaId).snapshots().map((snap) {
+      if (!snap.exists) return [];
+      final data = snap.data() as Map<String, dynamic>;
+      final progress = data['progress'] as Map<String, dynamic>? ?? {};
+
+      final list = progress.entries.map((e) => {
+        'uid': e.key,
+        'pages': e.value as int,
+      }).toList();
+
+      list.sort((a, b) => (b['pages'] as int).compareTo(a['pages'] as int));
+      return list;
+    });
   }
 }

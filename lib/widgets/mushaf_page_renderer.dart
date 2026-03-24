@@ -47,7 +47,7 @@ class MushafPageRenderer extends StatefulWidget {
   State<MushafPageRenderer> createState() => _MushafPageRendererState();
 }
 
-class _MushafPageRendererState extends State<MushafPageRenderer> {
+class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProviderStateMixin {
   static const bool showDebugBoxes = false; // 🐛 Debug Toggle
 
   final QuranTextService _quranService = QuranTextService();
@@ -60,17 +60,23 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
   final AyahInfoService _ayahInfoService = AyahInfoService();
   Map<String, List<Rect>> _ayahRects = {};
   bool _isDownloading = false;
+  late AnimationController _auraController; // ✨ New for Phase 123
 
   @override
   void initState() {
     super.initState();
     _transformationController = TransformationController();
+    _auraController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
     _loadPageData();
   }
 
   @override
   void dispose() {
     _transformationController.dispose();
+    _auraController.dispose();
     super.dispose();
   }
 
@@ -230,93 +236,105 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                   panEnabled: _isZoomed,
                   scaleEnabled: true,
                   boundaryMargin: _isZoomed ? const EdgeInsets.all(250) : EdgeInsets.zero,
-                  child: Stack(
-                    children: [
-                      // A. Visual Layer (Local Image or Fallback Text)
-                      if (_localImage != null)
-                        Positioned.fill(
-                          child: LayoutBuilder(
-                            builder: (context, imgConstraints) {
-                              return Stack(
-                                children: [
-                                  Positioned.fill(
-                                    child: Image.file(
-                                      _localImage!,
-                                      fit: BoxFit.contain,
-                                      filterQuality: FilterQuality.high,
+                  child: LayoutBuilder(
+                    builder: (context, boxConstraints) {
+                      final double hPadding = boxConstraints.maxWidth * 0.12; // Increased for premium feel
+                      final double vPadding = boxConstraints.maxHeight * 0.08; // Increased for premium feel
+                      final double availableWidth = boxConstraints.maxWidth - (hPadding * 2);
+                      final double availableHeight = boxConstraints.maxHeight - (vPadding * 2);
+                      final double lineHeight = availableHeight / 15;
+
+                      return Container(
+                        width: boxConstraints.maxWidth,
+                        height: boxConstraints.maxHeight,
+                        padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: vPadding),
+                        child: Stack(
+                          children: [
+                            // A. Visual Layer (Local Image or Fallback Text)
+                            if (_localImage != null)
+                              Positioned.fill(
+                                child: Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: Image.file(
+                                        _localImage!,
+                                        fit: BoxFit.contain,
+                                        filterQuality: FilterQuality.high,
+                                      ),
                                     ),
-                                  ),
-                                  // 🎯 Interactivity Layer for Image mode
-                                  _buildImageInteractions(imgConstraints.biggest),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      
-                      // B. Interactive Layer (Visible if no image, Transparent if image exists)
-                      IgnorePointer(
-                        ignoring: _localImage != null && _ayahRects.isNotEmpty && !showDebugBoxes,
-                        child: Container(
-                          width: constraints.maxWidth - 80,
-                          height: constraints.maxHeight - 120,
-                          padding: EdgeInsets.zero,
-                          color: _localImage != null ? Colors.transparent : null,
-                          child: Column(
-                            children: List.generate(15, (index) {
-                              int lineIdx = index + 1;
-                              List<Map<String, dynamic>> lineWords = lines[lineIdx] ?? [];
-                              
-                              int? headerForSurah;
-                              bool isBismillah = false;
-                              
-                              for (var verse in _pageData) {
-                                final vKey = verse['verse_key'] as String;
-                                final parts = vKey.split(':');
-                                final sNum = int.parse(parts[0]);
-                                final ayahNum = int.parse(parts[1]);
-                                
-                                final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
-                                if (wordsInVerse.isEmpty) continue;
-                                final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
-                                
-                                if (ayahNum == 1) {
-                                  if (sNum == 1 || sNum == 9) {
-                                    if (lineIdx == firstLineOfAyah - 1) {
-                                      headerForSurah = sNum;
+                                    // 🎯 Interactivity Layer for Image mode
+                                    _buildImageInteractions(Size(boxConstraints.maxWidth - (hPadding * 2), boxConstraints.maxHeight - (vPadding * 2))),
+                                  ],
+                                ),
+                              ),
+                            
+                            // B. Interactive Layer (Visible if no image, Transparent if image exists)
+                            IgnorePointer(
+                              ignoring: _localImage != null && _ayahRects.isNotEmpty && !showDebugBoxes,
+                              child: Container(
+                                width: availableWidth,
+                                height: availableHeight,
+                                padding: EdgeInsets.zero,
+                                color: _localImage != null ? Colors.transparent : null,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: List.generate(15, (index) {
+                                    int lineIdx = index + 1;
+                                    List<Map<String, dynamic>> lineWords = lines[lineIdx] ?? [];
+                                    
+                                    int? headerForSurah;
+                                    bool isBismillah = false;
+                                    
+                                    for (var verse in _pageData) {
+                                      final vKey = verse['verse_key'] as String;
+                                      final parts = vKey.split(':');
+                                      final sNum = int.parse(parts[0]);
+                                      final ayahNum = int.parse(parts[1]);
+                                      
+                                      final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
+                                      if (wordsInVerse.isEmpty) continue;
+                                      final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
+                                      
+                                      if (ayahNum == 1) {
+                                        if (sNum == 1 || sNum == 9) {
+                                          if (lineIdx == firstLineOfAyah - 1) {
+                                            headerForSurah = sNum;
+                                          }
+                                        } else {
+                                          if (lineIdx == firstLineOfAyah - 2) {
+                                            headerForSurah = sNum;
+                                          } else if (lineIdx == firstLineOfAyah - 1) {
+                                            isBismillah = true;
+                                          }
+                                        }
+                                      }
                                     }
-                                  } else {
-                                    if (lineIdx == firstLineOfAyah - 2) {
-                                      headerForSurah = sNum;
-                                    } else if (lineIdx == firstLineOfAyah - 1) {
-                                      isBismillah = true;
+        
+                                    Widget lineWidget;
+                                    if (headerForSurah != null) {
+                                      lineWidget = _localImage != null 
+                                        ? const SizedBox.shrink() 
+                                        : _buildSurahHeader(QuranPageHelper.surahNames[headerForSurah - 1], lineHeight);
+                                    } else if (isBismillah) {
+                                      lineWidget = _localImage != null
+                                        ? const SizedBox.shrink()
+                                        : _buildBismillah(lineHeight);
+                                    } else {
+                                      lineWidget = _buildLine(lineWords, availableWidth, lineHeight, isLastLine: index == 14, isTransparent: _localImage != null);
                                     }
-                                  }
-                                }
-                              }
-  
-                              Widget lineWidget;
-                              if (headerForSurah != null) {
-                                lineWidget = _localImage != null 
-                                  ? const SizedBox.shrink() 
-                                  : _buildSurahHeader(QuranPageHelper.surahNames[headerForSurah - 1]);
-                              } else if (isBismillah) {
-                                lineWidget = _localImage != null
-                                  ? const SizedBox.shrink()
-                                  : _buildBismillah();
-                              } else {
-                                lineWidget = _buildLine(lineWords, constraints.maxWidth - 80, isTransparent: _localImage != null);
-                              }
-  
-                              return SizedBox(
-                                height: 48,
-                                child: lineWidget,
-                              );
-                            }),
-                          ),
+        
+                                    return SizedBox(
+                                      height: lineHeight,
+                                      child: lineWidget,
+                                    );
+                                  }),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
               ),
@@ -449,10 +467,10 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     );
   }
 
-  Widget _buildSurahHeader(String name) {
+  Widget _buildSurahHeader(String name, double height) {
     return SizedBox(
       width: double.infinity,
-      height: 48, // Must fit exactly 1 line of the 15-line grid
+      height: height, // Must fit exactly 1 line of the 15-line grid
       child: CustomPaint(
         painter: _SurahHeaderPainter(
           color: _ornamentColor,
@@ -462,7 +480,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
           child: Text(
             "سُورَةُ $name",
             style: GoogleFonts.amiri(
-              fontSize: 32, // LARGER FONT AS REQUESTED
+              fontSize: min(height * 0.7, 32.0), // Scale relative to line height
               fontWeight: FontWeight.bold,
               color: _textColor,
               height: 1.0,
@@ -474,14 +492,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     );
   }
 
-  Widget _buildBismillah() {
+  Widget _buildBismillah(double height) {
     return Container(
-      height: 48,
+      height: height,
       alignment: Alignment.center,
       child: Text(
         "بِسْمِ ٱللّٰهِ الرَّحْمٰنِ الرَّحِيمِ",
         style: GoogleFonts.amiri(
-          fontSize: 28, // LARGER FONT AS REQUESTED
+          fontSize: min(height * 0.6, 28.0), // Scale relative to line height
           fontWeight: FontWeight.w500,
           color: _textColor,
           height: 1.0,
@@ -510,23 +528,24 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
     );
   }
 
-  Widget _buildLine(List<Map<String, dynamic>> words, double maxWidth, {bool isTransparent = false}) {
+  Widget _buildLine(List<Map<String, dynamic>> words, double maxWidth, double lineHeight, {bool isLastLine = false, bool isTransparent = false}) {
     if (words.isEmpty) return const SizedBox.shrink();
 
-    // Justification: Spreads words to fill 100% of the line width
-    // except for lines that end a paragraph/page (optional heuristic)
-    final bool shouldJustify = words.length > 2;
+    // Justification Logic: 
+    // Do NOT justify the very last line of a page/segment to keep it natural
+    final bool shouldJustify = words.length > 2 && !isLastLine;
 
     return Container(
-      width: maxWidth, // Match the outer container width
+      width: maxWidth, 
+      height: lineHeight,
       alignment: Alignment.center,
       child: FittedBox(
         fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight, // Maintain RTL feel
-        child: Container(
-          width: maxWidth, // Force the FittedBox to think the child is this wide
-          padding: const EdgeInsets.symmetric(horizontal: 2),
+        alignment: Alignment.center,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: shouldJustify ? maxWidth : 0),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
             textDirection: TextDirection.rtl,
             children: words.map((w) {
@@ -555,16 +574,31 @@ class _MushafPageRendererState extends State<MushafPageRenderer> {
                         widget.onAyahTapped!(sNum, ayahNum);
                       }
                     },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      padding: const EdgeInsets.symmetric(horizontal: 1),
-                      decoration: BoxDecoration(
-                        color: isHighlighted ? AppColors.gold.withValues(alpha: 0.22) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Opacity(
-                        opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
-                        child: widget.showTajweed && w['text_tajweed'] != null
+                      child: AnimatedBuilder(
+                        animation: _auraController,
+                        builder: (context, child) {
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            padding: const EdgeInsets.symmetric(horizontal: 1),
+                            decoration: BoxDecoration(
+                              color: isHighlighted 
+                                ? AppColors.gold.withValues(alpha: 0.15 + (0.1 * _auraController.value)) 
+                                : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                              boxShadow: isHighlighted ? [
+                                BoxShadow(
+                                  color: AppColors.gold.withValues(alpha: 0.1 * _auraController.value),
+                                  blurRadius: 8 * _auraController.value,
+                                  spreadRadius: 2,
+                                )
+                              ] : null,
+                            ),
+                            child: child,
+                          );
+                        },
+                        child: Opacity(
+                          opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
+                          child: widget.showTajweed && w['text_tajweed'] != null
                           ? RichText(
                               textDirection: TextDirection.rtl,
                               text: TextSpan(

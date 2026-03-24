@@ -26,6 +26,8 @@ import 'package:showcaseview/showcaseview.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/firebase_khatma_service.dart';
 import 'shared_khatma_hub_screen.dart';
+import '../services/achievement_service.dart';
+import '../services/spiritual_theme_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -112,10 +114,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         body: Stack(
           children: [
-            const _AnimatedBackground(),
+            // Home screen now relies on the background from MainDashboardScreen
+            // or we can keep it here if we want layering, but for now we'll 
+            // ensure it doesn't duplicate heavy effects.
+            // We'll use a simple placeholder or the global background.
+            const SizedBox.expand(), 
             NestedScrollView(
               headerSliverBuilder: (context, innerBoxIsScrolled) {
                 return [
@@ -137,6 +143,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             _buildQuranProgressSection(),
                             const SizedBox(height: 24),
                           ],
+                          const SizedBox(height: 24),
+                          _buildAchievementGallery(),
+                          const SizedBox(height: 24),
+                          _buildCommunityImpactWidget(),
+                          const SizedBox(height: 24),
                           _buildQuickAccessDashboard(),
                           const SizedBox(height: 32),
                         ],
@@ -335,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         const Icon(Icons.stars_rounded, color: AppColors.gold, size: 16),
                         const SizedBox(width: 8),
                         Text(
-                          _getDayGreetingAr(),
+                          _getDayGreetingAr(context),
                           style: GoogleFonts.amiri(
                             color: AppColors.gold,
                             fontSize: 16,
@@ -653,6 +664,103 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
     ),
+    );
+  }
+
+  // ============================================================
+  //  ACHIEVEMENT GALLERY 🏅✨
+  // ============================================================
+  Widget _buildAchievementGallery() {
+    return Consumer<AchievementService>(
+      builder: (context, service, _) {
+        final badges = service.badges;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'أوسمة الإنجاز 🏅',
+              style: GoogleFonts.amiri(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: badges.length,
+                itemBuilder: (context, index) {
+                  final badge = badges[index];
+                  return Container(
+                    width: 80,
+                    margin: const EdgeInsets.only(left: 12),
+                    decoration: BoxDecoration(
+                      color: badge.isUnlocked ? AppColors.gold.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: badge.isUnlocked ? AppColors.gold : Colors.white10),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(badge.icon, style: const TextStyle(fontSize: 28)),
+                        const SizedBox(height: 4),
+                        Text(
+                          badge.title.split(' ').first,
+                          style: TextStyle(color: badge.isUnlocked ? Colors.white : Colors.white24, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  //  COMMUNITY IMPACT WIDGET 🌍📡
+  // ============================================================
+  Widget _buildCommunityImpactWidget() {
+    final service = FirebaseKhatmaService();
+    return StreamBuilder<Map<String, dynamic>>(
+      stream: service.streamGlobalStats(),
+      builder: (context, snapshot) {
+        final stats = snapshot.data ?? {};
+        final totalAyahs = stats['totalAyahsRead'] ?? 0;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.emerald.withValues(alpha: 0.3), const Color(0xFF001A16)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: AppColors.gold.withValues(alpha: 0.15)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('أثر مجتمع تالا 🌍', style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'تمت قراءة $totalAyahs آية من قبل المجتمع اليوم',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.public_rounded, color: AppColors.gold, size: 40),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1339,18 +1447,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return const Center(child: Text('لا توجد مفضلات بعد', style: TextStyle(color: Colors.white)));
   }
 
-  String _getDayGreetingAr() {
-    final day = DateTime.now().weekday;
-    switch (day) {
-      case DateTime.friday: return 'جمعة مباركة';
-      case DateTime.saturday: return 'سبت مبارك';
-      case DateTime.sunday: return 'أحد مبارك';
-      case DateTime.monday: return 'اثنين مبارك';
-      case DateTime.tuesday: return 'ثلاثاء مباركة';
-      case DateTime.wednesday: return 'أربعاء مباركة';
-      case DateTime.thursday: return 'خميس مبارك';
-      default: return 'يوم مبارك';
-    }
+  String _getDayGreetingAr(BuildContext context) {
+    final service = Provider.of<SpiritualThemeService>(context, listen: false);
+    return service.getGreeting();
   }
 }
 
@@ -1403,45 +1502,10 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(_SliverTabBarDelegate oldDelegate) => false;
 }
 
-class _AnimatedBackground extends StatefulWidget {
-  const _AnimatedBackground();
-  @override
-  State<_AnimatedBackground> createState() => _AnimatedBackgroundState();
-}
-
-class _AnimatedBackgroundState extends State<_AnimatedBackground> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 15))..repeat();
-  }
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return CustomPaint(
-          size: Size.infinite,
-          painter: _ArabesquePatternPainter(
-            color: AppColors.gold.withValues(alpha: 0.05),
-            offset: _controller.value * 2 * math.pi,
-          ),
-        );
-      },
-    );
-  }
-}
 
 class _ArabesquePatternPainter extends CustomPainter {
   final Color color;
-  final double offset;
-  _ArabesquePatternPainter({required this.color, this.offset = 0});
+  _ArabesquePatternPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1454,7 +1518,7 @@ class _ArabesquePatternPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => true;
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 /// 🏅 Juz Progress Ring Painter

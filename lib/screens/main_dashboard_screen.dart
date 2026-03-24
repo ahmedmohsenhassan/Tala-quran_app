@@ -10,6 +10,9 @@ import 'search_screen.dart';
 import 'juz_list_screen.dart';
 import 'settings_tab.dart';
 import 'mushaf_viewer_screen.dart';
+import '../widgets/spiritual_background.dart';
+
+import 'constellation_screen.dart';
 
 class MainDashboardScreen extends StatefulWidget {
   final int? autoOpenPage;
@@ -55,6 +58,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const JuzListScreen(),
+    const ConstellationScreen(),
     const SearchScreen(),
     const SettingsTab(),
   ];
@@ -66,45 +70,49 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
       // ignore: deprecated_member_use
       child: ShowCaseWidget(
         builder: (context) => Scaffold(
-          backgroundColor: AppColors.background,
-        body: AnimatedBuilder(
-          animation: _pageController,
-          builder: (context, child) {
-            return PageView.builder(
-              controller: _pageController,
-              itemCount: _pages.length,
-              onPageChanged: (index) {
-                if (index != _currentIndex) {
-                  HapticFeedback.selectionClick();
-                }
-                setState(() {
-                  _currentIndex = index;
-                });
-              },
-              itemBuilder: (context, index) {
-                double value;
-                if (_pageController.position.hasContentDimensions) {
-                  value = (_pageController.page ?? _currentIndex.toDouble()) - index;
-                } else {
-                  value = (_currentIndex.toDouble()) - index;
-                }
-                
-                // حساب زاوية الدوران ثلاثي الأبعاد للتبويبات
-                double angle = (value * -3.14 / 4).clamp(-3.14 / 4, 3.14 / 4);
-                
-                return Transform(
-                  alignment: value > 0 ? Alignment.centerRight : Alignment.centerLeft,
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, 0.001)
-                    ..rotateY(angle),
-                  child: Opacity(
-                    opacity: (1 - value.abs()).clamp(0.0, 1.0),
-                    child: _pages[index],
-                  ),
+        body: Stack(
+          children: [
+            const SpiritualBackground(),
+            AnimatedBuilder(
+              animation: _pageController,
+              builder: (context, child) {
+                return PageView.builder(
+                  controller: _pageController,
+                  itemCount: _pages.length,
+                  onPageChanged: (index) {
+                    if (index != _currentIndex) {
+                      HapticFeedback.selectionClick();
+                    }
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    double value;
+                    if (_pageController.position.hasContentDimensions) {
+                      value = (_pageController.page ?? _currentIndex.toDouble()) - index;
+                    } else {
+                      value = (_currentIndex.toDouble()) - index;
+                    }
+                    
+                    // حساب زاوية الدوران ثلاثي الأبعاد للتبويبات
+                    double angle = (value * -3.14 / 8).clamp(-3.14 / 8, 3.14 / 8);
+                    
+                    return Transform(
+                      alignment: value > 0 ? Alignment.centerRight : Alignment.centerLeft,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.001)
+                        ..rotateY(angle),
+                      child: Opacity(
+                        opacity: (1 - value.abs()).clamp(0.0, 1.0),
+                        child: _pages[index],
+                      ),
+                    );
+                  },
                 );
               },
-            );
-          },
+            ),
+          ],
         ),
         extendBody: true, // Allows body to scroll behind the floating nav bar
         bottomNavigationBar: _buildPremiumBottomNavBar(),
@@ -146,7 +154,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
               selectedItemColor: AppColors.gold,
               unselectedItemColor: AppColors.textMuted,
               selectedLabelStyle: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 13),
-              unselectedLabelStyle: GoogleFonts.amiri(fontSize: 12),
+              unselectedLabelStyle: GoogleFonts.amiri(fontSize: 11),
               onTap: (index) {
                 if (index != _currentIndex) {
                   HapticFeedback.selectionClick();
@@ -170,6 +178,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
                   icon: Icon(Icons.menu_book_outlined),
                   activeIcon: Icon(Icons.menu_book_rounded),
                   label: 'الأجزاء',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.stars_outlined),
+                  activeIcon: Icon(Icons.stars_rounded),
+                  label: 'النجوم',
                 ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.search_outlined),
