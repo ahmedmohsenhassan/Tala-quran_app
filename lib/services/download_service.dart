@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:tala_quran_app/models/reciter_model.dart';
+import 'package:tala_quran_app/services/audio_url_service.dart';
 import 'dart:isolate';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,7 +14,6 @@ class DownloadService {
   DownloadService._internal();
 
   static const String _pageImageBaseUrl = 'https://quran.com/images/pages/'; // Example: 001.png
-  static const String _audioBaseUrl = 'https://download.quranicaudio.com/quran/mishari_al-`afasi/';
 
   /// تهيئة محرك التحميل
   static Future<void> initialize() async {
@@ -25,15 +26,17 @@ class DownloadService {
     send?.send([id, status, progress]);
   }
 
-  /// تحميل سورة (صوت)
-  Future<void> downloadAudio(int surahNumber) async {
+  /// تحميل سورة (صوت) لـ قارئ محدد
+  Future<void> downloadAudio({required Reciter reciter, required int surahNumber}) async {
     final directory = await getApplicationDocumentsDirectory();
-    final audioDir = Directory('${directory.path}/audio');
+    final audioDir = Directory('${directory.path}/audio/${reciter.id}');
     if (!await audioDir.exists()) await audioDir.create(recursive: true);
 
     final surahStr = surahNumber.toString().padLeft(3, '0');
+    final url = AudioUrlService.getSurahUrl(reciter: reciter, surahNumber: surahNumber);
+
     await FlutterDownloader.enqueue(
-      url: '$_audioBaseUrl$surahStr.mp3',
+      url: url,
       savedDir: audioDir.path,
       fileName: '$surahStr.mp3',
       showNotification: true,

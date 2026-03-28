@@ -10,9 +10,6 @@ import 'package:provider/provider.dart';
 import '../services/firebase_khatma_service.dart';
 
 import '../widgets/mushaf_audio_player.dart';
-import '../widgets/ai_tajweed_sheet.dart';
-import '../widgets/ayah_share_card.dart';
-import '../services/recitation_recognition_service.dart';
 import '../services/bookmark_service.dart';
 import '../services/streak_service.dart';
 import '../services/khatma_service.dart';
@@ -23,16 +20,18 @@ import '../services/reading_stats_service.dart';
 import '../services/quran_text_service.dart';
 import '../utils/app_colors.dart';
 import '../utils/quran_page_helper.dart';
-import '../services/ayah_info_service.dart';
+import 'tafseer_screen.dart';
+import '../services/smart_notification_service.dart'; // 🔔 Smart Nudges
+
 import '../widgets/mushaf_page_renderer.dart';
-import '../widgets/mushaf_settings_dialog.dart';
 import '../widgets/ayah_interaction_bubble.dart';
 import '../widgets/mushaf_navigation_picker.dart';
-import 'tafseer_screen.dart';
-import '../widgets/tala_ai_insight_panel.dart'; // 🤖 New for Phase 123
+import '../widgets/mushaf_settings_dialog.dart';
+import '../widgets/ayah_share_card.dart';
+import '../services/audio_service.dart';
 
 // ============================================================
-//  PREMIUM COLORS & THEME HELPERS
+//  PREMIUM COLORS & THEMES
 // ============================================================
 String _currentTheme = ThemeService.mushafClassic;
 
@@ -83,6 +82,8 @@ class MushafViewerScreen extends StatefulWidget {
   final int? initialAyah; // 🔗 New for Phase 112
   final int? initialSurah; // 🔗 New for Phase 112
   final String? sharedKhatmaId;
+  final bool autoPlay;
+  final String? autoPlayReciter;
 
   const MushafViewerScreen({
     super.key, 
@@ -90,6 +91,8 @@ class MushafViewerScreen extends StatefulWidget {
     this.initialAyah,
     this.initialSurah,
     this.sharedKhatmaId,
+    this.autoPlay = false,
+    this.autoPlayReciter,
   });
 
   @override
@@ -97,10 +100,9 @@ class MushafViewerScreen extends StatefulWidget {
 }
 
 class _MushafViewerScreenState extends State<MushafViewerScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late PageController _pageController;
   int _currentPage = 1;
-  bool _showAudioPlayer = false;
   bool _showBars = true;
   bool _isLoading = true;
   String _currentSurahName = '';
@@ -114,6 +116,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   // Highlighting state
   int? _activeAyah;
   int? _tappedAyah; // New: to track specifically tapped ayah
+  int? _tappedSurah;
   String? _highlightedWordLocation; // 🎯 New for Phase 64
   bool _isSanctuaryMode = false;
   
@@ -135,6 +138,8 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   int? _bubbleAyah;
 
   bool _isVerticalMode = false; // New: Toggle for scrolling direction
+  bool _showPageSlider = false; // 📜 New for Phase 115
+  bool _isAudioContinuing = false; // 🔄 New: Tracks auto-turn from audio player
 
   // Animation controllers for premium effects
   late AnimationController _barAnimController;
@@ -160,25 +165,40 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   bool _isPageZoomed = false;
   bool _showTajweed = false; // 🖌️ New for Phase 103
   
-  // 🎙️ Live Recitation State (Phase 115)
-  int? _currentReadingWordIndex;
-  List<Rect> _currentAyahWordRects = [];
-  StreamSubscription<int>? _recitationSubscription;
-  bool _isLiveRecitationActive = false;
-  
   // 📡 Collaborative Khatma State (Phase 105)
   late final FirebaseKhatmaService _firebaseKhatma;
   Stream<SharedKhatma>? _khatmaStream;
 
+  StreamSubscription? _globalAudioSub;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
     _currentPage = widget.initialPage;
-    _pageController = PageController(initialPage: widget.initialPage - 1);
+    
+    // 🎯 Use Surah to determine page if provided (e.g. from Deep-link)
+    if (widget.initialSurah != null) {
+      _currentPage = QuranPageHelper.getPageForSurah(widget.initialSurah!);
+    }
+
+    _pageController = PageController(initialPage: _currentPage - 1);
     
     if (widget.initialAyah != null) {
       _activeAyah = widget.initialAyah;
-      _showAudioPlayer = true; // Auto-open player for the target ayah
+      _tappedAyah = widget.initialAyah;
+      _tappedSurah = widget.initialSurah;
+      
+      // 🌅 Handle Ayah of the Day Auto-Play
+      if (widget.autoPlay) {
+        // We'll trigger this in _initAsync or similar after UI is ready
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted && _activeAyah != null) {
+            _handleAyahTap(widget.initialSurah ?? 1, _activeAyah!);
+          }
+        });
+      }
     }
     
     // 📡 Initialize Collaborative Features
@@ -215,6 +235,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     _initWakelock();
     _loadBookmarkedPages();
     _loadTajweedSetting(); // 🖌️ New for Phase 103
+    _loadPageSliderSetting(); // 📜 New for Phase 115
 
     // Start session timer ⏱️
     _sessionStopwatch.start();
@@ -226,6 +247,46 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
         });
       }
     });
+
+    _initGlobalAudioListener();
+  }
+
+  void _initGlobalAudioListener() {
+    _globalAudioSub = AudioService().ayahPlaybackStream.listen((state) {
+      if (!mounted || state == null) return;
+
+      // Sync active ayah for highlighting (if not already handled)
+      if (_activeAyah != state.ayah) {
+        setState(() {
+          _activeAyah = state.ayah;
+            // Note: _showAudioPlayer was removed as the player is now part of the persistent bottom bar
+        });
+      }
+
+      // 🚀 Sync page if different and not currently navigating (safety guard for manual swipe)
+      if (state.page != _currentPage && !_isScrubbing) {
+         // ONLY SNAPS IF:
+         // 1. We're in the middle of an auto-turn sequence (meaning UI was already moving but not yet updated)
+         // 2. OR the difference is substantial and we're playing (ensuring it doesn't jump back for tiny lags)
+         if (mounted) {
+          final isSubstantial = (state.page - _currentPage).abs() > 0;
+          if (isSubstantial && _isAudioContinuing) {
+            setState(() => _currentPage = state.page);
+            _pageController.animateToPage(
+              state.page - 1,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOutCubic,
+            );
+            _loadPageData(state.page, isBackground: true);
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> _loadPageSliderSetting() async {
+    final show = await SettingsService.getShowPageSlider();
+    if (mounted) setState(() => _showPageSlider = show);
   }
 
   Future<void> _initWakelock() async {
@@ -259,10 +320,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
     setState(() {
       _tappedAyah = ayah;
+      _tappedSurah = surah;
       _activeAyah = ayah;
       _bubbleSurah = surah;
       _bubbleAyah = ayah;
-      _showAudioPlayer = true;
       _showBubble = false;
     });
 
@@ -296,7 +357,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     setState(() {
       _isSanctuaryMode = true;
       _showBars = false;
-      _showAudioPlayer = false;
     });
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
@@ -312,7 +372,19 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // 🔔 User left the app while reading. Schedule the "Rescue Call" smart nudges.
+      SmartNotificationService.refreshSmartNudges();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // 🔔 User closed the Mushaf. Schedule retention nudges.
+    SmartNotificationService.refreshSmartNudges();
+    
     _statsTimer?.cancel();
     _pageController.dispose();
     _barAnimController.dispose();
@@ -327,7 +399,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     // Stop session timer and save reading time ⏱️
     _sessionStopwatch.stop();
     _sessionTickTimer?.cancel();
-    _recitationSubscription?.cancel();
+    _globalAudioSub?.cancel();
     final minutes = _sessionStopwatch.elapsed.inMinutes;
     if (minutes > 0) {
       ReadingStatsService.recordSessionTime(minutes: minutes);
@@ -513,11 +585,11 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
       }
       if (mounted) {
         setState(() {
+          _isAudioContinuing = true; // 🚀 Flag to ensure next page starts playing
           _tappedAyah = null; // Ensure new page starts playing from its first Ayah
         });
       }
     } else {
-      if (mounted) setState(() => _showAudioPlayer = false);
     }
   }
 
@@ -562,9 +634,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     child: _buildBookFrame(),
                   ),
 
-                  // === 🎙️ Live Recitation Word Highlights (Phase 115) ===
-                  if (_isLiveRecitationActive && _currentAyahWordRects.isNotEmpty && _currentReadingWordIndex != null)
-                    _buildLiveRecitationOverlay(),
 
                   // === محراب التلاوة Overlay ===
                   if (_isSanctuaryMode)
@@ -603,8 +672,10 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                   // === الشريط العلوي ===
                   _buildPremiumTopBar(isKids: isKids, kidsMode: kidsMode),
 
-                  // === الشريط السفلي ===
-                  _buildPremiumBottomBar(isKids: isKids, kidsMode: kidsMode),
+                  // === الشريط السفلي الموحد (المشغل) ===
+
+                  // === 📜 Page Slider (Mini-map) ===
+                  if (_showBars && _showPageSlider) _buildPreviewSlider(),
 
                   // === مشغل الصوت ===
                   Positioned(
@@ -614,11 +685,13 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     right: 0,
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
-                      child: _showAudioPlayer
+                      child: _showBars
                           ? MushafAudioPlayer(
-                              key: ValueKey('mushaf_audio_player_$_currentPage$_tappedAyah'),
                               pageNumber: _currentPage,
                               initialAyah: _tappedAyah,
+                              initialSurah: _tappedSurah,
+                              autoPlayContinues: _isAudioContinuing || _tappedAyah != null, // 🚀 NEW
+                              autoPlayReciter: widget.autoPlayReciter,
                               onAyahChanged: (surah, ayah) {
                                 debugPrint('🔊 Ayah Changed: $surah:$ayah');
                                 if (mounted) {
@@ -643,9 +716,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                               },
                               onClose: () {
                                 setState(() {
-                                  _showAudioPlayer = false;
                                   _activeAyah = null;
                                   _highlightedWordLocation = null; // Reset
+                                  _isAudioContinuing = false; // Reset
                                   _isMemorizationMode = false;
                                   _tappedAyah = null; // Reset tapped ayah
                                 });
@@ -655,53 +728,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                     ),
                   ),
           
-          // Slider 📜✨
-          if (_showBars) _buildPreviewSlider(),
 
-          // Bottom Bar
-          if (_showBars)
-            _isSanctuaryMode
-                ? const SizedBox.shrink()
-                : _buildPremiumBottomBar(isKids: isKids, kidsMode: kidsMode),
-                  // === زر مختبر التجويد AI ===
-                  if (_showBars && !_showAudioPlayer)
-                    Positioned(
-                      bottom: 100,
-                      right: 24,
-                      child: _buildAIBtn(
-                        icon: Icons.psychology_rounded,
-                        color: AppColors.gold,
-                        onTap: () => _openAITajweedLab(),
-                        label: 'مختبر التجويد',
-                      ),
-                    ),
+                  // === AI Buttons Removed for Minimalist Audio Experience ===
 
-                  // === 🤖 Tala AI Insight Portal (Phase 123) ===
-                  if (_showBars && !_showAudioPlayer)
-                    Positioned(
-                      bottom: 180,
-                      right: 24,
-                      child: _buildAIBtn(
-                        icon: Icons.auto_awesome_rounded,
-                        color: Colors.deepPurpleAccent,
-                        onTap: () => _showAIInsights(),
-                        label: 'Tala AI',
-                        isGlow: true,
-                      ),
-                    ),
-
-                  // === زر التعرّف على التلاوة (🎙️) ===
-                  if (_showBars && !_showAudioPlayer)
-                    Positioned(
-                    bottom: 100,
-                    left: 24,
-                    child: _buildAIBtn(
-                      icon: _isLiveRecitationActive ? Icons.stop_rounded : Icons.mic_rounded,
-                      color: _isLiveRecitationActive ? Colors.redAccent : Colors.blueAccent,
-                      onTap: () => _recognizeCurrentRecitation(),
-                      label: 'التعرف الصوتي',
-                    ),
-                  ),
 
                   // === 📏 Premium Side Progress Rail ===
                   if (!_isSanctuaryMode)
@@ -712,59 +741,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     );
   }
 
-  Widget _buildAIBtn({
-    required IconData icon, 
-    required Color color, 
-    required VoidCallback onTap, 
-    required String label,
-    bool isGlow = false,
-  }) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 500),
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: value,
-          child: Opacity(opacity: value, child: child),
-        );
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: isGlow ? [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.5),
-                  blurRadius: 15,
-                  spreadRadius: 2,
-                )
-              ] : null,
-            ),
-            child: FloatingActionButton(
-              heroTag: 'ai_btn_$label',
-              onPressed: onTap,
-              backgroundColor: color,
-              elevation: 8,
-              child: Icon(icon, color: Colors.white, size: 28),
-            ),
-          ),
-          if (_showBars) ...[
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.amiri(
-                color: Colors.white.withValues(alpha: 0.9),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   Widget _buildSideProgressRail() {
     return Positioned(
@@ -806,91 +782,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     );
   }
 
-  void _recognizeCurrentRecitation() async {
-    if (_isLiveRecitationActive) {
-      _stopLiveRecitation();
-      return;
-    }
-
-    final int surah = QuranPageHelper.getSurahForPage(_currentPage);
-    final int ayah = _activeAyah ?? 1;
-
-    HapticFeedback.heavyImpact();
-    setState(() {
-      _isLiveRecitationActive = true;
-      _currentReadingWordIndex = null;
-      _currentAyahWordRects = [];
-    });
-
-    // 1. Fetch word coordinates for the target Ayah
-    final rects = await AyahInfoService().getAyahWordRects(_currentPage, surah, ayah);
-    if (!mounted) return;
-
-    setState(() {
-      _currentAyahWordRects = rects;
-    });
-
-    // 2. Start the service
-    final service = RecitationRecognitionService();
-    _recitationSubscription?.cancel();
-    _recitationSubscription = service.wordMatchStream.listen((index) {
-      if (mounted) {
-        setState(() {
-          _currentReadingWordIndex = index;
-        });
-        HapticFeedback.selectionClick();
-      }
-    });
-
-    await service.startLiveRecitation(surah, ayah);
-  }
-
-  void _stopLiveRecitation() {
-    RecitationRecognitionService().stop();
-    _recitationSubscription?.cancel();
-    setState(() {
-      _isLiveRecitationActive = false;
-      _currentReadingWordIndex = null;
-      _currentAyahWordRects = [];
-    });
-  }
-
-  Widget _buildLiveRecitationOverlay() {
-    // نستخدم التحجيم المناسب للإحداثيات بناءً على حجم الشاشة وموقع الصفحة
-    // ملاحظة: MushafPageRenderer يقوم بالتحجيم داخلياً، لذا سنحتاج لتمرير الإحداثيات له أو الرسم فوقه
-    // للتبسيط في هذه المرحلة، نستخدم CustomPaint فوق الـ PageView
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _WordHighlightPainter(
-          rects: _currentAyahWordRects,
-          currentIndex: _currentReadingWordIndex!,
-          glowColor: _richGold.withValues(alpha: 0.4),
-        ),
-      ),
-    );
-  }
-
-  void _showAIInsights() {
-    HapticFeedback.heavyImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => TalaAIInsightPanel(pageNumber: _currentPage),
-    );
-  }
-
-  void _openAITajweedLab() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => AITajweedSheet(
-        surah: QuranPageHelper.getSurahForPage(_currentPage),
-        ayah: _activeAyah ?? 1,
-      ),
-    );
-  }
 
   // ============================================================
   //  LOADING STATE
@@ -1002,6 +893,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
 
                           setState(() {
                             _currentPage = page;
+                            _isAudioContinuing = false; // 🔄 Reset after any page turn
                             _currentSurahName = QuranPageHelper.getSurahNameForPage(page);
                             _currentJuz = QuranPageHelper.getJuzForPage(page);
                           });
@@ -1110,7 +1002,9 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                                 );
                               } 
 
-                              return _buildPremiumPage(pageNumber);
+                              return RepaintBoundary(
+                                child: _buildPremiumPage(pageNumber),
+                              );
                             },
                           );
                         },
@@ -1343,343 +1237,127 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                 child: child,
               );
             },
-            child: Container(
-              padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 5, 16, 10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    _deepGreen,
-                    _deepGreen.withValues(alpha: 0.97),
-                    _deepGreen.withValues(alpha: 0.85),
-                  ],
-                ),
-                border: Border(
-                  bottom: BorderSide(
-                    color: _richGold.withValues(alpha: 0.5),
-                    width: 1.5,
+            child: Directionality(
+              textDirection: TextDirection.rtl, // 🎯 Force RTL to ensure consistent Arabic layout
+              child: Container(
+                padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 5, 12, 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _deepGreen,
+                      _deepGreen.withValues(alpha: 0.97),
+                      _deepGreen.withValues(alpha: 0.85),
+                    ],
                   ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  // 🎠Scrollable Buttons Group to prevent overflow
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Fihris (Index) Button 📑
-                          _PremiumIconButton(
-                            icon: Icons.menu_book_rounded,
-                            onPressed: _showQuickFihris,
-                          ),
-                          const SizedBox(width: 8),
-        
-                          _PremiumIconButton(
-                            icon: Icons.self_improvement_rounded,
-                            onPressed: _enterSanctuaryMode,
-                          ),
-                          const SizedBox(width: 8),
-        
-                          // زر وضع القراءة (Vertical vs Horizontal)
-                          _PremiumIconButton(
-                            icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
-                            onPressed: () async {
-                              final newMode = !_isVerticalMode;
-                              setState(() {
-                                 _isVerticalMode = newMode;
-                              });
-                              await SettingsService.setReadingMethod(
-                                newMode ? ReadingMethod.scroll : ReadingMethod.pages
-                              );
-                              HapticFeedback.mediumImpact();
-                            },
-                          ),
-                          const SizedBox(width: 8),
-        
-                          // زر الإعدادات (Real Mushaf Settings)
-                          _PremiumIconButton(
-                            icon: Icons.settings_rounded,
-                            onPressed: _showSettings,
-                          ),
-                          const SizedBox(width: 8),
-                          
-                          _PremiumIconButton(
-                            icon: Icons.arrow_back_ios_new_rounded,
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-        
-                          // Session Timer ⏱️
-                          const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0x14FFD700), // GOLD 8%
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.timer_outlined, color: Color(0x99FFD700), size: 14),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _sessionTimeDisplay,
-                                  style: GoogleFonts.outfit(
-                                    color: const Color(0xB3FFD700), // GOLD 70%
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _richGold.withValues(alpha: 0.5),
+                      width: 1.5,
                     ),
                   ),
-
-                  const SizedBox(width: 8),
-                  
-                  // معلومات السورة والجزء
-                  Flexible(
-                    child: GestureDetector(
-                      onTap: _showNavigationPicker,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _richGold.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _richGold.withValues(alpha: 0.1), width: 1),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _currentSurahName,
-                              style: GoogleFonts.amiri(
-                                color: primaryColor,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                height: 1.2,
+                ),
+                child: Row(
+                  children: [
+                    // اليمين: زر الرجوع + معلومات السورة
+                    _PremiumIconButton(
+                      icon: Icons.arrow_forward_ios_rounded, // Right arrow for RTL 'back'
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const SizedBox(width: 8),
+                    
+                    // معلومات السورة والجزء
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: _showNavigationPicker,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _richGold.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: _richGold.withValues(alpha: 0.1), width: 1),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _currentSurahName,
+                                style: GoogleFonts.amiri(
+                                  color: primaryColor,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.2,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            Text(
-                              'جزء $_currentJuz',
-                              style: GoogleFonts.amiri(
-                                color: _lightGold.withValues(alpha: 0.7),
-                                fontSize: 11,
-                                height: 1.0,
+                              Text(
+                                'جزء $_currentJuz',
+                                style: GoogleFonts.amiri(
+                                  color: _lightGold.withValues(alpha: 0.7),
+                                  fontSize: 11,
+                                  height: 1.0,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  const Spacer(),
+                    const Spacer(),
 
-                  // زر الخيارات
-                  _PremiumIconButton(
-                    icon: Icons.more_vert_rounded,
-                    onPressed: () => _showPageOptions(context, _currentPage),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  //  PREMIUM BOTTOM BAR
-  // ============================================================
-  Widget _buildPremiumBottomBar({bool isKids = false, KidsModeService? kidsMode}) {
-    final primaryColor = isKids ? kidsMode?.primaryColor ?? _richGold : _richGold;
-
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 600),
-        opacity: _isSanctuaryMode ? 0.0 : 1.0,
-        child: IgnorePointer(
-          ignoring: _isSanctuaryMode,
-          child: AnimatedBuilder(
-            animation: _barSlideAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(0, 60 * (1 - _barSlideAnimation.value)),
-                child: child,
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    _deepGreen,
-                    _deepGreen.withValues(alpha: 0.97),
-                    _deepGreen.withValues(alpha: 0.85),
+                    // اليسار: أدوات الوصول السريع مع تجنب الـ Overflow
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Session Timer ⏱️
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0x14FFD700), // GOLD 8%
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.timer_outlined, color: Color(0x99FFD700), size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                _sessionTimeDisplay,
+                                style: GoogleFonts.outfit(
+                                  color: const Color(0xB3FFD700), // GOLD 70%
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        
+                        // زر الإعدادات
+                        _PremiumIconButton(
+                          icon: Icons.settings_rounded,
+                          onPressed: _showSettings,
+                        ),
+                        
+                        // زر الفهرس السريع
+                        _PremiumIconButton(
+                          icon: Icons.menu_book_rounded,
+                          onPressed: _showQuickFihris,
+                        ),
+                        
+                        // زر الخيارات (يحتوي على باقي الأدوات لتوفير المساحة)
+                        _PremiumIconButton(
+                          icon: Icons.more_vert_rounded,
+                          onPressed: () => _showPageOptions(context, _currentPage),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-                border: Border(
-                  top: BorderSide(
-                    color: _richGold.withValues(alpha: 0.5),
-                    width: 1.5,
-                  ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 12,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Scrollable info badges for bottom bar
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // رقم الصفحة مزخرف
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: _richGold.withValues(alpha: 0.4),
-                                width: 1,
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              'صفحة $_currentPage',
-                              style: GoogleFonts.amiri(
-                                color: primaryColor,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Hizb info badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _richGold.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'حزب ${((_currentPage - 1) ~/ 10 + 1).clamp(1, 60)}',
-                              style: GoogleFonts.amiri(
-                                color: _lightGold.withValues(alpha: 0.7),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Juz info badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _richGold.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'جزء $_currentJuz',
-                              style: GoogleFonts.amiri(
-                                color: _lightGold.withValues(alpha: 0.7),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const Spacer(),
-
-                  // نقاط التقدم
-                  Text(
-                    '${(_currentPage / 604 * 100).toStringAsFixed(1)}%',
-                    style: GoogleFonts.outfit(
-                      color: _lightGold.withValues(alpha: 0.6),
-                      fontSize: 12,
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  // زر المشاركة
-                  _PremiumIconButton(
-                    icon: Icons.share_rounded,
-                    size: 22,
-                    onPressed: () => _shareCurrentPage(),
-                  ),
-
-                  const SizedBox(width: 8),
-
-                  // زر الحفظ
-                  _PremiumIconButton(
-                    icon: Icons.bookmark_border_rounded,
-                    size: 22,
-                    onPressed: () async {
-                      await BookmarkService.addPageBookmark(pageNumber: _currentPage);
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    _richGold.withValues(alpha: 0.2),
-                                    _richGold.withValues(alpha: 0.05),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(15),
-                                border: Border.all(
-                                  color: _richGold.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              child: Text(
-                                'تم حفظ الصفحة $_currentPage ✓',
-                                style: GoogleFonts.amiri(color: Colors.white),
-                              ),
-                            ),
-                            backgroundColor: Colors.transparent,
-                            elevation: 0,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: _richGold.withValues(alpha: 0.3),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ],
               ),
             ),
           ),
@@ -2281,23 +1959,6 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
     );
   }
 
-  // ============================================================
-  //  SHARE CURRENT PAGE
-  // ============================================================
-  void _shareCurrentPage() {
-    // Navigate to the beautiful share card screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AyahShareCard(
-          ayahText: 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ', // Default first ayah
-          surahName: _currentSurahName,
-          ayahNumber: 1,
-          surahNumber: QuranPageHelper.getSurahForPage(_currentPage),
-        ),
-      ),
-    );
-  }
 
   // ============================================================
   //  PAGE OPTIONS MODAL
@@ -2359,7 +2020,7 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                       label: 'تشغيل',
                       onTap: () {
                         Navigator.pop(context);
-                        setState(() => _showAudioPlayer = true);
+                        // Player is now integrated into the bottom bar
                       },
                     ),
                     _buildPremiumOption(
@@ -2379,9 +2040,39 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                         );
                       },
                     ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // الأزرار المخفية سابقاً لتوفير المساحة
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildPremiumOption(
+                      icon: Icons.self_improvement_rounded,
+                      label: 'محراب التلاوة',
+                      onTap: () {
+                        Navigator.pop(context);
+                        _enterSanctuaryMode();
+                      },
+                    ),
+                    _buildPremiumOption(
+                      icon: _isVerticalMode ? Icons.swap_vert_rounded : Icons.swap_horiz_rounded,
+                      label: 'اتجاه القراءة',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final newMode = !_isVerticalMode;
+                        setState(() {
+                           _isVerticalMode = newMode;
+                        });
+                        await SettingsService.setReadingMethod(
+                          newMode ? ReadingMethod.scroll : ReadingMethod.pages
+                        );
+                        HapticFeedback.mediumImpact();
+                      },
+                    ),
                     _buildPremiumOption(
                       icon: Icons.bookmark_add_rounded,
-                      label: 'حفظ',
+                      label: 'حفظ الصفحة',
                       onTap: () async {
                         Navigator.pop(context);
                         await BookmarkService.addPageBookmark(
@@ -2396,6 +2087,17 @@ class _MushafViewerScreenState extends State<MushafViewerScreen>
                             backgroundColor: _deepGreen,
                           ),
                         );
+                      },
+                    ),
+                    _buildPremiumOption(
+                      icon: _showPageSlider ? Icons.linear_scale_rounded : Icons.maximize_rounded,
+                      label: 'مؤشر الصفحات',
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final newVal = !_showPageSlider;
+                        setState(() => _showPageSlider = newVal);
+                        await SettingsService.setShowPageSlider(newVal);
+                        HapticFeedback.mediumImpact();
                       },
                     ),
                   ],
@@ -2506,18 +2208,16 @@ class _PremiumBackgroundPainter extends CustomPainter {
 class _PremiumIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
-  final double size;
 
   const _PremiumIconButton({
     required this.icon,
     required this.onPressed,
-    this.size = 20,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, color: const Color(0xFFD4A947), size: size),
+      icon: Icon(icon, color: const Color(0xFFD4A947), size: 20),
       onPressed: onPressed,
       splashColor: const Color(0xFFD4A947).withValues(alpha: 0.15),
       highlightColor: const Color(0xFFD4A947).withValues(alpha: 0.05),
@@ -2698,58 +2398,3 @@ class _CylindricalPageClipper extends CustomClipper<Path> {
 //  CUSTOM PAINTERS & WIDGETS (Phase 115)
 // ============================================
 
-class _WordHighlightPainter extends CustomPainter {
-  final List<Rect> rects;
-  final int currentIndex;
-  final Color glowColor;
-
-  _WordHighlightPainter({
-    required this.rects,
-    required this.currentIndex,
-    required this.glowColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (currentIndex < 0 || currentIndex >= rects.length) return;
-
-    final rect = rects[currentIndex];
-    
-    // 💡 التحجيم: إحداثيات glyphs مبنية على حجم صفحة (1164x1800) أو مشابه
-    // نحتاج للتحويل إلى حجم الـ Canvas الحالي (size)
-    const double originalWidth = 1111; 
-    const double originalHeight = 1695; 
-    
-    final double scaleX = size.width / originalWidth;
-    final double scaleY = size.height / originalHeight;
-
-    final scaledRect = Rect.fromLTRB(
-      rect.left * scaleX,
-      rect.top * scaleY,
-      rect.right * scaleX,
-      rect.bottom * scaleY,
-    );
-
-    final paint = Paint()
-      ..color = glowColor
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(scaledRect.inflate(6), const Radius.circular(8)),
-      paint,
-    );
-
-    // Core Highlight
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(scaledRect.inflate(2), const Radius.circular(4)),
-      Paint()
-        ..color = glowColor.withValues(alpha: 0.9)
-        ..style = PaintingStyle.fill,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _WordHighlightPainter oldDelegate) {
-    return oldDelegate.currentIndex != currentIndex || oldDelegate.rects != rects;
-  }
-}

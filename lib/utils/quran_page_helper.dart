@@ -137,6 +137,14 @@ class QuranPageHelper {
     return closestSurah;
   }
 
+  /// الحصول على رقم الصفحة لآية معينة
+  static int getPageForAyah(int surah, int ayah) {
+    // This is a simplified version. For full precision, we would need 
+    // a pre-generated map of every ayah to its page.
+    // For now, we return the surah start page as a baseline.
+    return getPageForSurah(surah);
+  }
+
   /// الحصول على اسم السورة من رقم الصفحة
   static String getSurahNameForPage(int pageNumber) {
     int surahNumber = getSurahForPage(pageNumber);

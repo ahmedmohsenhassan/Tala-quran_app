@@ -10,6 +10,9 @@ class Reciter {
   final String serverUrl; // Base URL for full surahs (e.g. mp3quran.net)
 
   final String qiraah; // "حفص" أو "ورش"
+  
+  final String? firebasePath; // 🚀 Path in Firebase Storage
+  final bool preferFirebase;  // 🛡️ Whether to favor Firebase over public links
 
   const Reciter({
     required this.id,
@@ -20,6 +23,8 @@ class Reciter {
     required this.identifier,
     required this.serverUrl,
     this.qiraah = "حفص",
+    this.firebasePath,
+    this.preferFirebase = false,
   });
 
   // قائمة القراء الافتراضية - Default reciters list
@@ -33,6 +38,7 @@ class Reciter {
           baseUrl: 'https://everyayah.com/data/Alafasy_128kbps/',
           identifier: 'ar.alafasy',
           serverUrl: 'https://server8.mp3quran.net/afs/',
+          firebasePath: 'reciters/alafasy', // 🌅 Standard fallback
         ),
         const Reciter(
           id: 'al_husary_hafs',
@@ -62,10 +68,12 @@ class Reciter {
           subTitle: 'Yassin Al-Jazaery (Warsh)',
           imageUrl:
               'https://static.qurancdn.com/images/reciters/reciter_placeholder.png',
-          baseUrl: 'https://everyayah.com/data/Yassin_Al_Jazaery_64kbps/',
+          baseUrl: 'https://everyayah.com/data/warsh/warsh_yassin_al_jazaery_64kbps/',
           identifier: 'ar.yassin_al_jazaery',
           serverUrl: 'https://server12.mp3quran.net/yassin/',
           qiraah: 'ورش',
+          firebasePath: 'reciters/yassin_al_jazaery',
+          preferFirebase: true, // 🛡️ Smart Priority: Favor Firebase for stability
         ),
         const Reciter(
           id: 'al_minshawi',
@@ -73,9 +81,11 @@ class Reciter {
           subTitle: 'Al-Minshawi',
           imageUrl:
               'https://static.qurancdn.com/images/reciters/7/mohamed-siddiq-el-minshawi-profile.jpeg',
-          baseUrl: 'https://everyayah.com/data/Minshawi_Murattal_128kbps/',
+          baseUrl: 'https://everyayah.com/data/Minshawy_Murattal_128kbps/',
           identifier: 'ar.minshawi',
           serverUrl: 'https://server10.mp3quran.net/minsh/',
+          firebasePath: 'reciters/minshawi',
+          preferFirebase: true, // 🛡️ Smart Priority: Favor Firebase for stability
         ),
         const Reciter(
           id: 'al_ghamdi',

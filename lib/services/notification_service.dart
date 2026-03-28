@@ -24,6 +24,9 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Callback for notification taps (Set by main.dart)
+  static void Function(String? payload)? onNotificationTap;
+
   // Notification channel IDs
   static const String _channelId = 'tala_quran_notifications';
   static const String _channelName = 'إشعارات تلا قرآن';
@@ -55,13 +58,16 @@ class NotificationService {
         tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
       }
 
-      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
       const initSettings = InitializationSettings(android: androidSettings);
 
       await _notifPlugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: _onNotificationTapped,
       );
+
+      // 🔔 Request Permissions for Android 13+ and Exact Alarms
+      await requestPermissions();
 
       // Load verse database and schedule
       await _loadVerseDb();
@@ -72,10 +78,26 @@ class NotificationService {
     });
   }
 
+  /// طلب صلاحيات الإشعارات — Request notification permissions
+  static Future<void> requestPermissions() async {
+    final androidPlugin = _notifPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidPlugin != null) {
+      // 1. Request POST_NOTIFICATIONS for Android 13+
+      await androidPlugin.requestNotificationsPermission();
+      
+      // 2. Request EXACT_ALARM for Android 12+
+      await androidPlugin.requestExactAlarmsPermission();
+      
+      debugPrint('🔔 Notification Permissions Requested');
+    }
+  }
+
   /// معالجة الضغط على الإشعار — Handle notification tap
   static void _onNotificationTapped(NotificationResponse response) {
-    // Deep-link handling will be done via navigation in main.dart
     debugPrint('Notification tapped: ${response.payload}');
+    onNotificationTap?.call(response.payload);
   }
 
   // ===================== VERSE DATABASE =====================
@@ -211,9 +233,9 @@ class NotificationService {
       _channelId,
       _channelName,
       channelDescription: _channelDesc,
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/launcher_icon',
       styleInformation: BigTextStyleInformation(
         message['body']!,
         contentTitle: message['title'],
@@ -229,16 +251,57 @@ class NotificationService {
       message['title'],
       message['body'],
       scheduledDate,
-      notifDetails,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+       notifDetails,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
       payload: category,
     );
+
+    debugPrint('📅 Scheduled Daily Notification ($category) at $hour:$minute (ID: $id)');
   }
-  /// جدولة إشعار من فئة معينة فوراً (للمحفزات الذكية)
-  static Future<void> scheduleCategory(String category, {Duration delay = const Duration(hours: 4)}) async {
+  /// جدولة إشعار مفصل بدقة متناهية (لآية اليوم والمحفزات)
+  /// Schedule a detailed exact notification with a specific date and payload
+  static Future<void> scheduleDetailedNotification({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduledDate,
+    String? payload,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDesc,
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/launcher_icon',
+      styleInformation: BigTextStyleInformation(''), // Will be set by body
+    );
+
+    await _notifPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      scheduledDate,
+      const NotificationDetails(android: androidDetails),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dateAndTime, // Crucial for daily/weekly
+      payload: payload,
+    );
+
+    debugPrint('🎯 Scheduled Detailed Notification: $title at $scheduledDate (ID: $id)');
+  }
+
+  /// جدولة إشعار من فئة معينة بدقة متناهية (للمحفزات الذكية)
+  /// Schedule an exact notification that bypasses Doze mode
+  static Future<void> scheduleExactCategory({
+    required int id, 
+    required String category, 
+    required Duration delay
+  }) async {
     final message = _getRandomFromCategory(category);
     final scheduledDate = tz.TZDateTime.now(tz.local).add(delay);
 
@@ -246,20 +309,26 @@ class NotificationService {
       _channelId,
       _channelName,
       channelDescription: _channelDesc,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/launcher_icon',
     );
 
     await _notifPlugin.zonedSchedule(
-      _wirdNotifId + 1, // ID فريد للمحفزات الذكية
+      id,
       message['title']!,
       message['body']!,
       scheduledDate,
       const NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle, // 🎯 Critical for exact nudges
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: category,
     );
+  }
+
+  /// إلغاء إشعار محدد — Cancel a specific notification
+  static Future<void> cancelNotification(int id) async {
+    await _notifPlugin.cancel(id);
   }
 
   /// حساب الوقت القادم — Next instance of time

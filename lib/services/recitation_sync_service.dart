@@ -29,7 +29,7 @@ class RecitationSyncService {
     // 2. الجلب من API إذا لم تكن موجودة
     try {
       final response = await _dio.get(
-        'https://api.quran.com/api/v4/recitations/\$reciterId/by_ayah/\$verseKey',
+        "https://api.quran.com/api/v4/recitations/$reciterId/by_ayah/$verseKey",
         queryParameters: {'fields': 'segments'},
       );
 
@@ -52,7 +52,7 @@ class RecitationSyncService {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error fetching timestamps for \$verseKey: \$e');
+      debugPrint('❌ Error fetching timestamps for $verseKey: $e');
     }
     return [];
   }

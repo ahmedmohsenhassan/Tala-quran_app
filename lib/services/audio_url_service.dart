@@ -43,6 +43,24 @@ class AudioUrlService {
 
     return "$base$s$a.mp3";
   }
+  
+  /// توليد رابط Firebase Storage للملف الصوتي
+  /// Generate a Firebase Storage audio URL
+  static String getFirebaseAyahUrl({
+    required String firebasePath,
+    required int surahNumber,
+    required int ayahNumber,
+  }) {
+    final String s = surahNumber.toString().padLeft(3, '0');
+    final String a = ayahNumber.toString().padLeft(3, '0');
+    const String bucket = "tala-al-quran-db80c.firebasestorage.app";
+    
+    // Construct Path: e.g. reciters/minshowy/001001.mp3
+    final String fullPath = "$firebasePath/$s$a.mp3";
+    final String encodedPath = Uri.encodeComponent(fullPath);
+    
+    return "https://firebasestorage.googleapis.com/v0/b/$bucket/o/$encodedPath?alt=media";
+  }
 
   /// توليد رابط الملف الصوتي لصفحة محددة (مصحف المدينة)
   /// Generate a page-specific audio URL

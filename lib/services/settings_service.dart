@@ -1,4 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tala_quran_app/models/reciter_model.dart';
+import 'package:tala_quran_app/services/audio_url_service.dart';
 
 enum ReadingMethod { pages, scroll }
 enum LastPageAction { resume, ask, showList }
@@ -13,6 +15,7 @@ class SettingsService {
   static const String _scrollSpeedKey = 'settings_scroll_speed';
   static const String _showProgressInNotificationsKey = 'settings_show_progress_in_notifications';
   static const String _showTajweedKey = 'settings_show_tajweed'; // 🎨 Phase 103
+  static const String _selectedReciterIdKey = 'settings_selected_reciter_id';
 
   /// إبقاء الشاشة مضاءة — Keep screen on (Default: true)
   static Future<bool> getKeepScreenOn() async {
@@ -126,5 +129,30 @@ class SettingsService {
   static Future<void> setShowTajweed(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showTajweedKey, value);
+  }
+
+  /// إظهار منزلق الصفحات — Show Page Slider (Default: false)
+  static const String _showPageSliderKey = 'settings_show_page_slider';
+
+  static Future<bool> getShowPageSlider() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_showPageSliderKey) ?? false;
+  }
+
+  static Future<void> setShowPageSlider(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showPageSliderKey, value);
+  }
+
+  /// القارئ المفضل — Selected Reciter (Default: al_afasy)
+  static Future<Reciter> getSelectedReciter() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(_selectedReciterIdKey) ?? 'al_afasy';
+    return AudioUrlService.getReciterById(id);
+  }
+
+  static Future<void> setSelectedReciter(String reciterId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_selectedReciterIdKey, reciterId);
   }
 }

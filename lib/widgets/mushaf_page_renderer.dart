@@ -59,7 +59,8 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
   final DownloadService _downloadService = DownloadService();
   final AyahInfoService _ayahInfoService = AyahInfoService();
   Map<String, List<Rect>> _ayahRects = {};
-  bool _isDownloading = false;
+  Map<int, List<Map<String, dynamic>>> _processedLines = {}; // 🚀 New for Phase 115
+  Map<int, dynamic> _lineMetadata = {}; // 🚀 New: Stores {surah: int, isBismillah: bool}
   late AnimationController _auraController; // ✨ New for Phase 123
 
   @override
@@ -113,9 +114,16 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       
       
       if (mounted) {
-        debugPrint('📖 Page \${widget.pageNumber}: Words=\${data.length}, Rects=\${rects.length}');
+        debugPrint('📖 Page ${widget.pageNumber}: Words=${data.length}, Rects=${rects.length}');
+        
+        // 🚀 PRE-PROCESS DATA FOR 60FPS SWIPING
+        final processed = _performLineGrouping(data);
+        final metadata = _performMetadataDetection(data);
+
         setState(() {
           _pageData = data;
+          _processedLines = processed;
+          _lineMetadata = metadata;
           _localImage = localImg;
           _ayahRects = rects;
           _isLoading = false;
@@ -130,19 +138,62 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     _preCacheSurroundingPages();
   }
 
+  Map<int, List<Map<String, dynamic>>> _performLineGrouping(List<Map<String, dynamic>> data) {
+    Map<int, List<Map<String, dynamic>>> lines = {};
+    for (var verse in data) {
+      final words = verse['words'] as List<dynamic>? ?? [];
+      for (var word in words) {
+        int lineNum = word['line_number'] ?? 1;
+        lines.putIfAbsent(lineNum, () => []).add({...word, 'verse_key': verse['verse_key']});
+      }
+    }
+    return lines;
+  }
+
+  Map<int, dynamic> _performMetadataDetection(List<Map<String, dynamic>> data) {
+    Map<int, dynamic> metadata = {};
+    for (int lineIdx = 1; lineIdx <= 15; lineIdx++) {
+      for (var verse in data) {
+        final vKey = verse['verse_key'] as String;
+        final parts = vKey.split(':');
+        final sNum = int.parse(parts[0]);
+        final ayahNum = int.parse(parts[1]);
+        
+        final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
+        if (wordsInVerse.isEmpty) continue;
+        final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
+        
+        if (ayahNum == 1) {
+          if (sNum == 1 || sNum == 9) {
+            if (lineIdx == firstLineOfAyah - 1) {
+              metadata[lineIdx] = {'surah': sNum};
+            }
+          } else {
+            if (lineIdx == firstLineOfAyah - 2) {
+              metadata[lineIdx] = {'surah': sNum};
+            } else if (lineIdx == firstLineOfAyah - 1) {
+              metadata[lineIdx] = {'isBismillah': true};
+            }
+          }
+        }
+      }
+    }
+    return metadata;
+  }
+
   Future<void> _preCacheSurroundingPages() async {
     // 🔥 GPU-accelerated Pre-caching for zero-lag transitions
     if (!mounted) return;
     
     if (widget.pageNumber < 604) {
-      _downloadService.getLocalPageImage(widget.pageNumber + 1).then((file) {
+      _downloadService.getLocalPageImage(widget.pageNumber + 1).then((File? file) {
         if (file != null && mounted) {
           precacheImage(FileImage(file), context);
         }
       });
     }
     if (widget.pageNumber > 1) {
-      _downloadService.getLocalPageImage(widget.pageNumber - 1).then((file) {
+      _downloadService.getLocalPageImage(widget.pageNumber - 1).then((File? file) {
         if (file != null && mounted) {
           precacheImage(FileImage(file), context);
         }
@@ -190,16 +241,6 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       );
     }
 
-    // Group all words on the page by line number
-    Map<int, List<Map<String, dynamic>>> lines = {};
-    for (var verse in _pageData) {
-      final words = verse['words'] as List<dynamic>? ?? [];
-      for (var word in words) {
-        int lineNum = word['line_number'] ?? 1;
-        lines.putIfAbsent(lineNum, () => []).add({...word, 'verse_key': verse['verse_key']});
-      }
-    }
-
     return Container(
       decoration: BoxDecoration(
         color: _parchmentColor,
@@ -213,12 +254,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       ),
       child: Stack(
         children: [
-          // 1. Ornate Frame (Always below text)
+          // 🚀 1. Ornate Frame (RepaintBoundary for 60FPS)
           Positioned.fill(
-            child: CustomPaint(
-              painter: _PageFramePainter(
-                color: _ornamentColor,
-                edition: widget.edition,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _PageFramePainter(
+                  color: _ornamentColor,
+                  edition: widget.edition,
+                ),
               ),
             ),
           ),
@@ -227,7 +270,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
           Positioned.fill(
             child: LayoutBuilder(
               builder: (context, constraints) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+                padding: EdgeInsets.zero, // REMOVED redundant padding
                 child: InteractiveViewer(
                   transformationController: _transformationController,
                   onInteractionUpdate: _onInteractionUpdate,
@@ -238,8 +281,8 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                   boundaryMargin: _isZoomed ? const EdgeInsets.all(250) : EdgeInsets.zero,
                   child: LayoutBuilder(
                     builder: (context, boxConstraints) {
-                      final double hPadding = boxConstraints.maxWidth * 0.12; // Increased for premium feel
-                      final double vPadding = boxConstraints.maxHeight * 0.08; // Increased for premium feel
+                      final double hPadding = boxConstraints.maxWidth * 0.06; // Responsive & Balanced
+                      final double vPadding = boxConstraints.maxHeight * 0.04; // Responsive & Balanced
                       final double availableWidth = boxConstraints.maxWidth - (hPadding * 2);
                       final double availableHeight = boxConstraints.maxHeight - (vPadding * 2);
                       final double lineHeight = availableHeight / 15;
@@ -250,16 +293,19 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                         padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: vPadding),
                         child: Stack(
                           children: [
-                            // A. Visual Layer (Local Image or Fallback Text)
+                            // 🚀 A. Visual Image Layer (RepaintBoundary for 60FPS)
                             if (_localImage != null)
                               Positioned.fill(
                                 child: Stack(
                                   children: [
                                     Positioned.fill(
-                                      child: Image.file(
-                                        _localImage!,
-                                        fit: BoxFit.contain,
-                                        filterQuality: FilterQuality.high,
+                                      child: RepaintBoundary(
+                                        child: Image.file(
+                                          _localImage!,
+                                          fit: BoxFit.contain,
+                                          filterQuality: FilterQuality.medium, // Optimized quality for swiping
+                                          cacheWidth: (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).toInt(), // Cache to device size
+                                        ),
                                       ),
                                     ),
                                     // 🎯 Interactivity Layer for Image mode
@@ -280,35 +326,11 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: List.generate(15, (index) {
                                     int lineIdx = index + 1;
-                                    List<Map<String, dynamic>> lineWords = lines[lineIdx] ?? [];
+                                    List<Map<String, dynamic>> lineWords = _processedLines[lineIdx] ?? [];
                                     
-                                    int? headerForSurah;
-                                    bool isBismillah = false;
-                                    
-                                    for (var verse in _pageData) {
-                                      final vKey = verse['verse_key'] as String;
-                                      final parts = vKey.split(':');
-                                      final sNum = int.parse(parts[0]);
-                                      final ayahNum = int.parse(parts[1]);
-                                      
-                                      final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
-                                      if (wordsInVerse.isEmpty) continue;
-                                      final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
-                                      
-                                      if (ayahNum == 1) {
-                                        if (sNum == 1 || sNum == 9) {
-                                          if (lineIdx == firstLineOfAyah - 1) {
-                                            headerForSurah = sNum;
-                                          }
-                                        } else {
-                                          if (lineIdx == firstLineOfAyah - 2) {
-                                            headerForSurah = sNum;
-                                          } else if (lineIdx == firstLineOfAyah - 1) {
-                                            isBismillah = true;
-                                          }
-                                        }
-                                      }
-                                    }
+                                    final meta = _lineMetadata[lineIdx];
+                                    int? headerForSurah = meta?['surah'];
+                                    bool isBismillah = meta?['isBismillah'] ?? false;
         
                                     Widget lineWidget;
                                     if (headerForSurah != null) {
@@ -351,75 +373,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
             ),
           ),
 
-          // 5. Download Prompt (Overlay)
-          if (_localImage == null)
-            Positioned(
-              bottom: 80,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: GestureDetector(
-                  onTap: _isDownloading ? null : () async {
-                    setState(() => _isDownloading = true);
-                    try {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('بدء تحميل الصفحة...'))
-                      );
-                      await _downloadService.downloadPage(widget.pageNumber);
-                      
-                      // 🔄 Periodic check for download completion
-                      int checks = 0;
-                      Timer.periodic(const Duration(seconds: 2), (timer) async {
-                        checks++;
-                        final file = await _downloadService.getLocalPageImage(widget.pageNumber);
-                        if (file != null || checks > 15) {
-                          timer.cancel();
-                          if (mounted) {
-                            setState(() => _isDownloading = false);
-                            _loadPageData(); 
-                          }
-                        }
-                      });
-                    } catch (e) {
-                      if (mounted) setState(() => _isDownloading = false);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: _isDownloading ? Colors.grey : AppColors.gold.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _isDownloading ? Icons.hourglass_empty_rounded : Icons.download_rounded, 
-                          color: Colors.white, 
-                          size: 20
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isDownloading ? 'جاري التحميل...' : 'تحميل الصفحة (KFGQPC)',
-                          style: GoogleFonts.amiri(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          // 5. Ornate Frames & Marginalia 🎨 (Isolate from Page Rendering)
           Positioned(
             top: 35,
             left: 50,
@@ -480,7 +434,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
           child: Text(
             "سُورَةُ $name",
             style: GoogleFonts.amiri(
-              fontSize: min(height * 0.7, 32.0), // Scale relative to line height
+              fontSize: min(height * 0.8, 38.0), // Increased for "Real Mushaf" fill
               fontWeight: FontWeight.bold,
               color: _textColor,
               height: 1.0,
@@ -499,7 +453,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       child: Text(
         "بِسْمِ ٱللّٰهِ الرَّحْمٰنِ الرَّحِيمِ",
         style: GoogleFonts.amiri(
-          fontSize: min(height * 0.6, 28.0), // Scale relative to line height
+          fontSize: min(height * 0.75, 36.0), // Increased for "Real Mushaf" fill
           fontWeight: FontWeight.w500,
           color: _textColor,
           height: 1.0,
@@ -606,14 +560,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                                   w['text_tajweed']!,
                                   widget.fontFamily == ThemeService.fontAmiri 
                                     ? GoogleFonts.amiri(
-                                        fontSize: widget.fontSize, 
+                                        fontSize: widget.fontSize * (lineHeight / 34), 
                                         color: isTransparent ? Colors.transparent : _textColor,
                                         fontWeight: FontWeight.w500,
                                         height: 1.1,
                                       )
                                     : TextStyle(
                                         fontFamily: widget.fontFamily,
-                                        fontSize: widget.fontSize,
+                                        fontSize: widget.fontSize * (lineHeight / 34),
                                         color: isTransparent ? Colors.transparent : _textColor,
                                         height: 1.1,
                                       ),
@@ -624,7 +578,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                               cleanText,
                               style: widget.fontFamily == ThemeService.fontAmiri 
                                 ? GoogleFonts.amiri(
-                                    fontSize: widget.fontSize, 
+                                    fontSize: widget.fontSize * (lineHeight / 34), 
                                     color: isTransparent ? Colors.transparent : _textColor,
                                     fontWeight: FontWeight.w500,
                                     height: 1.1,
@@ -632,7 +586,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                                 : TextStyle(
                                     fontFamily: widget.fontFamily,
                                     fontStyle: FontStyle.normal,
-                                    fontSize: widget.fontSize,
+                                    fontSize: widget.fontSize * (lineHeight / 34),
                                     color: isTransparent ? Colors.transparent : _textColor,
                                     height: 1.1,
                                   ),
@@ -642,7 +596,7 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
                   ),
                   if (isEnd) ...[
                     const SizedBox(width: 4),
-                    _buildAyahEndMark(ayahNum),
+                    _buildAyahEndMark(ayahNum, lineHeight),
                   ],
                 ],
               );
@@ -674,18 +628,19 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     return false;
   }
 
-  Widget _buildAyahEndMark(int number) {
+  Widget _buildAyahEndMark(int number, double lineHeight) {
+    final double markSize = min(lineHeight * 0.6, 32.0);
     return Stack(
       alignment: Alignment.center,
       children: [
         CustomPaint(
-          size: const Size(28, 28),
+          size: Size(markSize, markSize),
           painter: _AyahEndPainter(color: _ornamentColor),
         ),
         Text(
           "$number",
           style: GoogleFonts.amiri(
-            fontSize: 10,
+            fontSize: markSize * 0.45,
             fontWeight: FontWeight.bold,
             color: _textColor,
           ),

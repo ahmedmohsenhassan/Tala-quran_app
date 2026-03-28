@@ -1,12 +1,15 @@
 // 🕌 مشروع "تلا قرآن" - نقطة البداية
 // 🌐 Tala Quran App - Entry Point
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vmath;
 import 'screens/splash_screen.dart';
+import 'screens/mushaf_viewer_screen.dart';
 import 'utils/app_colors.dart';
 import 'services/quran_database_service.dart';
 import 'services/notification_service.dart';
+import 'services/smart_notification_service.dart'; // 🔔 Smart Nudges
 import 'services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
 import 'services/theme_service.dart';
@@ -31,6 +34,9 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
 final ValueNotifier<String> fontNotifier = ValueNotifier(ThemeService.fontAmiri);
 final ValueNotifier<double> fontSizeNotifier = ValueNotifier(1.0);
 final ValueNotifier<String> colorNotifier = ValueNotifier(ThemeService.colorEmerald);
+
+/// مفتاح التنقل العالمي — Global Navigator Key for Deep-linking
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -102,7 +108,34 @@ void main() async {
   AppColors.applyColorTheme(savedColor);
 
   // Initialize push notifications in the background
-  NotificationService.initialize().catchError((e) => debugPrint('Notification Init Error: $e'));
+  NotificationService.initialize().then((_) {
+    // 🔔 Refresh retention nudges silently
+    SmartNotificationService.refreshSmartNudges();
+    
+    // 📡 Register tap handler for deep-linking
+    NotificationService.onNotificationTap = (payload) {
+      if (payload == null) return;
+      try {
+        final data = json.decode(payload);
+        if (data['action'] == 'aotd') {
+          navigatorKey.currentState?.pushNamed(
+            '/mushaf',
+            arguments: {
+              'surah': data['surah'],
+              'ayah': data['ayah'],
+              'reciter': data['reciter'],
+              'autoPlay': true,
+            },
+          );
+        }
+      } catch (e) {
+        debugPrint('Error parsing notification payload: $e');
+      }
+    };
+  }).catchError((e) {
+    debugPrint('Notification Init Error: $e');
+    return null;
+  });
 
   runApp(
     ErrorBoundary(
@@ -169,6 +202,7 @@ class TalaQuranApp extends StatelessWidget {
                             : AppColors.lightBackground);
 
                     return MaterialApp(
+                      navigatorKey: navigatorKey,
                       debugShowCheckedModeBanner: false,
                       title: 'Tala Al-Quran',
                       themeMode: currentMode,
@@ -234,7 +268,20 @@ class TalaQuranApp extends StatelessWidget {
                           },
                         ),
                       ),
-                      home: const SplashScreen(),
+                      // Configure Named Routes for easier deep-linking
+                      routes: {
+                        '/': (context) => const SplashScreen(),
+                        '/mushaf': (context) {
+                          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+                          return MushafViewerScreen(
+                            initialSurah: args?['surah'],
+                            initialAyah: args?['ayah'],
+                            autoPlayReciter: args?['reciter'],
+                            autoPlay: args?['autoPlay'] ?? false,
+                          );
+                        },
+                      },
+                      initialRoute: '/',
                     );
                   },
                 );

@@ -65,7 +65,7 @@ class StreakService {
     await prefs.setInt(_totalDaysKey, totalDays);
 
     // جدولة المحفز الذكي القادم — Schedule next smart motivation
-    SmartNotificationService.scheduleNextSmartTouch();
+    SmartNotificationService.refreshSmartNudges();
   }
 
   /// الحصول على بيانات الـ Streak — Get streak data

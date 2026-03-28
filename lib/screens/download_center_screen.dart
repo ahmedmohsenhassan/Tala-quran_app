@@ -3,8 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:tala_quran_app/services/settings_service.dart';
+import 'package:tala_quran_app/utils/app_colors.dart';
 import '../services/download_service.dart';
-import '../utils/app_colors.dart';
 
 class DownloadCenterScreen extends StatefulWidget {
   const DownloadCenterScreen({super.key});
@@ -207,7 +208,10 @@ class _DownloadCenterScreenState extends State<DownloadCenterScreen> with Single
               style: GoogleFonts.amiri(color: Colors.white, fontSize: 18)),
           ),
           IconButton(
-            onPressed: () => DownloadService().downloadAudio(surahNumber),
+            onPressed: () async {
+              final reciter = await SettingsService.getSelectedReciter();
+              DownloadService().downloadAudio(reciter: reciter, surahNumber: surahNumber);
+            },
             icon: Icon(Icons.cloud_download_outlined, color: AppColors.emerald),
           ),
         ],
