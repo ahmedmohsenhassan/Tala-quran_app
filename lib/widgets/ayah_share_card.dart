@@ -229,7 +229,7 @@ class _AyahShareCardState extends State<AyahShareCard> {
 
             // App branding
             Text(
-              '~ تلا قرآن 🕌',
+              '~ تلا القرآن 🕌',
               style: GoogleFonts.amiri(
                 color: AppColors.gold.withValues(alpha: 0.5),
                 fontSize: 13,
@@ -288,7 +288,7 @@ class _AyahShareCardState extends State<AyahShareCard> {
       // Share the image
       await Share.shareXFiles(
         [XFile(filePath)],
-        text: '📖 ${widget.surahName} — الآية ${widget.ayahNumber}\n~ تلا قرآن 🕌',
+        text: '📖 ${widget.surahName} — الآية ${widget.ayahNumber}\n~ تلا القرآن 🕌',
       );
     } catch (e) {
       debugPrint('❌ [AyahShareCard] Capture Error: $e');

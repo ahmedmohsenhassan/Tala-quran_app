@@ -146,50 +146,46 @@ class QuranTextService {
   // ======================================================================
 
   /// جلب تفسير آية معينة (أوفلاين من SQLite مع جلب تلقائي في الخلفية)
-  Future<Map<String, String>> getTafseer(int surah, int ayah) async {
+  Future<Map<String, String>> getTafseer(int surah, int ayah, {int? preferredTafseerId}) async {
     try {
-      final tafseerId = await TafseerService.getTafseerId();
+      final tafseerId = preferredTafseerId ?? await TafseerService.getTafseerId();
       final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
-      final identifier = _getTafseerIdentifier(tafseerId);
+      final identifier = 'tafseer-$tafseerId';
 
       // 1. محاولة الجلب من SQLite (الأولوية للأوفلاين)
       final localText = await _quranDb.getTafseerText(surah, ayah, identifier);
-      if (localText != null) {
-        return {'text': localText, 'name': tafseerName};
+      if (localText != null && localText.trim().length > 5 && !localText.contains("تعذر") && !localText.contains("فشل")) {
+        return {'text': _stripHtml(localText), 'name': tafseerName};
       }
 
-      // 2. إذا لم يوجد، جلب من API وحفظه في SQLite تلقائياً
-      final response = await _dio.get(
-        'https://api.quran.com/api/v4/quran/tafsirs/$tafseerId',
-        queryParameters: {'verse_key': '$surah:$ayah'},
-      );
+      // 2. إذا لم يوجد، الاعتماد على TafseerService (Quran.com v4)
+      final fallbackText = await TafseerService.getAyahTafseer(surah, ayah, tafseerId: tafseerId);
+      
+      if (!fallbackText.contains("فشل") && !fallbackText.contains("خطأ") && !fallbackText.contains("غير متوفر")) {
+        final cleanText = _stripHtml(fallbackText);
+        
+        // حفظ في SQLite ليعمل أوفلاين في المرات القادمة
+        final resourceId = await _quranDb.upsertResource({
+          'name': tafseerName,
+          'identifier': identifier,
+          'type': 'tafseer',
+          'lang': 'ar',
+          'is_downloaded': 0, 
+        });
 
-      if (response.statusCode == 200) {
-        final List tafsirs = response.data['tafsirs'];
-        if (tafsirs.isNotEmpty) {
-          final text = _stripHtml(tafsirs[0]['text'] ?? "لا يوجد تفسير متاح.");
-          
-          // حفظ في SQLite للاستخدام القادم بدون إنترنت (تخزين دائم)
-          final resourceId = await _quranDb.upsertResource({
-            'name': tafseerName,
-            'identifier': identifier,
-            'type': 'tafseer',
-            'lang': 'ar',
-            'is_downloaded': 0,
-          });
+        await _quranDb.saveTafseersBatch(resourceId, [
+          {'verse_key': '$surah:$ayah', 'text': fallbackText} // Save raw, but return clean
+        ]);
 
-          await _quranDb.saveTafseersBatch(resourceId, [
-            {'verse_key': '$surah:$ayah', 'text': text}
-          ]);
-
-          return {'text': text, 'name': tafseerName};
-        }
+        return {'text': cleanText, 'name': tafseerName};
       }
-      return {'text': "تعذر جلب التفسير. تأكد من الاتصال بالإنترنت.", 'name': tafseerName};
+      
+      return {'text': _stripHtml(fallbackText), 'name': tafseerName};
     } catch (e) {
-      final tafseerId = await TafseerService.getTafseerId();
+      debugPrint("❌ GetTafseer Error: $e");
+      final tafseerId = preferredTafseerId ?? await TafseerService.getTafseerId();
       final tafseerName = TafseerService.availableTafseers[tafseerId] ?? 'التفسير';
-      return {'text': "التفسير غير متاح حالياً أوفلاين.", 'name': tafseerName};
+      return {'text': "فشل جلب المعاني من الخادم. تأكد من اتصالك بالإنترنت.", 'name': tafseerName};
     }
   }
 
@@ -203,22 +199,25 @@ class QuranTextService {
 
     // 1. محاولة الجلب من SQLite
     final localText = await _quranDb.getTranslationText(surah, ayah, identifier);
-    if (localText != null) return localText;
+    if (localText != null && localText.trim().length > 5 && !localText.contains("تعذر") && !localText.contains("فشل")) {
+      return localText;
+    }
 
-    // 2. جلب من API وحفظ في SQLite
+    // 2. جلب من API باستخدام Quran.com v4 (الأكثر استقراراً)
     try {
       final response = await _dio.get(
         'https://api.quran.com/api/v4/quran/translations/$translationId',
         queryParameters: {'verse_key': '$surah:$ayah'},
+        options: Options(receiveTimeout: const Duration(seconds: 15)),
       );
 
       if (response.statusCode == 200) {
         final List translations = response.data['translations'];
         if (translations.isNotEmpty) {
-          final String text = _stripHtml(translations[0]['text'] ?? "");
+          final String text = _stripHtml(translations.first['text']);
           
           final resourceId = await _quranDb.upsertResource({
-            'name': 'Translation $translationId', // Simplified
+            'name': 'Translation $translationId',
             'identifier': identifier,
             'type': 'translation',
             'lang': 'en',
@@ -232,22 +231,39 @@ class QuranTextService {
           return text;
         }
       }
-      return "الترجمة غير متاحة حالياً.";
+      
+      // Fallback 3: QuranEnc if Quran.com fails
+      final encResponse = await _dio.get(
+        'https://quranenc.com/api/v1/translation/aya/english_saheeh/$surah/$ayah',
+        options: Options(receiveTimeout: const Duration(seconds: 15)),
+      );
+      if (encResponse.statusCode == 200) {
+        return _stripHtml(encResponse.data['result']?['translation'] ?? "الترجمة غير متاحة.");
+      }
+
+      return "الترجمة غير متاحة للآية $surah:$ayah.";
     } catch (e) {
-      return ""; 
+      debugPrint("❌ GetTranslation Error: $e");
+      return "عذراً، فشل الاتصال بخوادم الترجمة."; 
     }
   }
 
   String _stripHtml(String html) {
-    return html.replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ' ').trim();
-  }
-
-  String _getTafseerIdentifier(int id) {
-    switch (id) {
-      case 16: return 'ar-tafseer-muyassar';
-      case 1: return 'ar-tafsir-ibn-kathir';
-      default: return 'tafseer-$id';
-    }
+    // 1. Unescape common HTML entities
+    var text = html
+        .replaceAll('&quot;', '"')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&#39;', "'")
+        .replaceAll('&nbsp;', ' ');
+    
+    // 2. Remove all HTML tags
+    text = text.replaceAll(RegExp(r'<[^>]*>'), '');
+    
+    // 3. Remove multiple spaces and trim
+    return text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _getTranslationIdentifier(int id) {

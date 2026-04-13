@@ -9,7 +9,6 @@ import 'home_screen.dart';
 import 'search_screen.dart';
 import 'juz_list_screen.dart';
 import 'settings_tab.dart';
-import 'mushaf_viewer_screen.dart';
 import '../widgets/spiritual_background.dart';
 
 import 'constellation_screen.dart';
@@ -30,22 +29,6 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
-
-    // التعامل مع الفتح التلقائي للمصحف بعد أول إطار - لضمان ثبات التنقل
-    // Handle auto-opening Mushaf after first frame to ensure stable navigation
-    if (widget.autoOpenPage != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  MushafViewerScreen(initialPage: widget.autoOpenPage!),
-            ),
-          );
-        }
-      });
-    }
   }
 
   @override

@@ -1,4 +1,4 @@
-# وصف المتجر - تلا قرآن (Google Play Store Metadata) 📱🕌✨
+# وصف المتجر - تلا القرآن (Google Play Store Metadata) 📱🕌✨
 
 ## العربية (Arabic - ar)
 

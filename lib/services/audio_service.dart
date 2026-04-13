@@ -10,6 +10,7 @@ import '../models/ayah_playback_state.dart';
 import '../utils/quran_page_helper.dart';
 import 'audio_url_service.dart';
 
+
 /// خدمة تشغيل الصوت للتلاوة — تدعم التشغيل الأوفلاين والعمل في الخلفية
 /// Audio playback service for Quran recitation with offline & background support
 class AudioService {
@@ -139,14 +140,9 @@ class AudioService {
       totalRangeRepeats: _rangeRepeatCount,
     );
 
-    // Only emit if something meaningful changed to avoid stream flooding
-    if (_lastEmittedState?.surah != state.surah || 
-        _lastEmittedState?.ayah != state.ayah ||
-        _lastEmittedState?.isPlaying != state.isPlaying ||
-        _lastEmittedState?.processingState != state.processingState) {
-      _lastEmittedState = state;
-      _ayahStateController.add(state);
-    }
+    // Always emit — the listener needs position updates for word sync
+    _lastEmittedState = state;
+    _ayahStateController.add(state);
   }
 
   // ===================== AYAH SEQUENCES =====================
@@ -163,6 +159,7 @@ class AudioService {
     _activeReciter = reciter;
     _currentAyahIteration = 1;
     _currentRangeIteration = 1;
+    _sequenceComplete = false;
     
     await _playCurrentFromPlaylist(playImmediately: playImmediately);
   }
@@ -220,27 +217,53 @@ class AudioService {
         final currentUrl = sources[i];
         debugPrint('🎧 [AudioService] Loading Source $i: $currentUrl');
 
-        final audioSource = AudioSource.uri(
-          Uri.parse(currentUrl),
-          tag: MediaItem(
-            id: 'ayah_${surah}_$ayah',
-            album: 'تلا القرآن - سورة $surahName',
-            title: 'آية $ayah',
-            artist: _activeReciter!.name,
-            artUri: Uri.parse(_activeReciter!.imageUrl),
-          ),
-        );
+        final audioSource = currentUrl.startsWith('http')
+            ? AudioSource.uri(
+                Uri.parse(currentUrl),
+                tag: MediaItem(
+                  id: 'ayah_${surah}_$ayah',
+                  album: 'تلا القرآن - سورة $surahName',
+                  title: 'آية $ayah',
+                  artist: _activeReciter!.name,
+                  artUri: Uri.parse(_activeReciter!.imageUrl),
+                ),
+              )
+            : AudioSource.file(
+                currentUrl,
+                tag: MediaItem(
+                  id: 'ayah_${surah}_$ayah',
+                  album: 'تلا القرآن - سورة $surahName',
+                  title: 'آية $ayah',
+                  artist: _activeReciter!.name,
+                  artUri: Uri.parse(_activeReciter!.imageUrl),
+                ),
+              );
 
         await _player.setAudioSource(audioSource);
+        
         if (playImmediately) {
-          await _player.play();
+          try {
+            await _player.play();
+          } catch (playbackError) {
+            debugPrint('⚠️ [AudioService] Playback immediate start failed: $playbackError');
+            // We established the source is okay (setAudioSource worked), 
+            // so we try one more play command or let the user resume.
+            _player.play(); 
+          }
         }
+        
         _updateAyahState();
         return; // ✅ Success! Break the retry loop
       } catch (e) {
         debugPrint('❌ [AudioService] Source $i failed: $e');
         if (i == sources.length - 1) {
-          debugPrint('🚩 [AudioService] ALL sources failed for $surah:$ayah');
+          debugPrint('🚩 [AudioService] ALL sources failed for $surah:$ayah. Skipping to next...');
+          // 🚀 AUTO-SKIP to next Ayah to avoid stopping the whole recitation
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            if (_player.processingState != ProcessingState.loading) {
+               nextAyah();
+            }
+          });
         } else {
           debugPrint('🔄 [AudioService] Retrying with next source...');
         }
@@ -248,21 +271,30 @@ class AudioService {
     }
   }
 
+  // 🚩 Signals when the playlist is exhausted (range repeats done too)
+  bool _sequenceComplete = false;
+  bool get isSequenceComplete => _sequenceComplete;
+
   void nextAyah() {
     if (_currentIndex < _playlist.length - 1) {
       _currentIndex++;
       _currentAyahIteration = 1;
+      _sequenceComplete = false;
       _playCurrentFromPlaylist(playImmediately: true);
     } else {
-      // End of playlist reached — Check Range Repetition
+      // 🔄 Sequence exhausted — Check Range Repetition
       if (_currentRangeIteration < _rangeRepeatCount || _rangeRepeatCount == 0) {
         _currentRangeIteration++;
-        _currentIndex = _rangeStartIndex; // Loop back to start of range
+        _currentIndex = _rangeStartIndex;
         _currentAyahIteration = 1;
+        _sequenceComplete = false;
         _playCurrentFromPlaylist(playImmediately: true);
         debugPrint('🔁 Range Looping: Iteration $_currentRangeIteration');
       } else {
-        debugPrint('🏁 End of Ayah sequence reached');
+        // 🏁 SEQUENCE COMPLETE — signal to MushafAudioPlayer to handle page turn
+        debugPrint('🏁 [AudioService] Sequence complete. Signaling end.');
+        _sequenceComplete = true;
+        _updateAyahState(); // Emit final state so listener can react
       }
     }
   }
@@ -270,6 +302,7 @@ class AudioService {
   void previousAyah() {
     if (_currentIndex > 0) {
       _currentIndex--;
+      _currentAyahIteration = 1;
       _playCurrentFromPlaylist();
     }
   }

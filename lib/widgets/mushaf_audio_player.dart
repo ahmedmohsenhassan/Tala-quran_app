@@ -4,11 +4,12 @@ import 'package:flutter/services.dart';
 import '../services/audio_service.dart';
 import '../utils/app_colors.dart';
 import '../models/reciter_model.dart';
-import '../services/ayah_sync_service.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/recitation_sync_service.dart'; // 🎙️ New for Phase 64
+import '../services/quran_text_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio/just_audio.dart';
+import '../services/theme_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// ويدجت مشغّل الصوت الخاصة بصفحات المصحف — الآن مرتبطة بخدمة عالمية
@@ -23,6 +24,7 @@ class MushafAudioPlayer extends StatefulWidget {
   final VoidCallback? onEndOfPage; // 🔄 Continuous Auto-Scroll
   final bool autoPlayContinues; // 🚀 New: for seamless transitions
   final String? autoPlayReciter; // 🌅 New for AOTD
+  final String theme;
   final VoidCallback onClose;
 
   const MushafAudioPlayer({
@@ -37,6 +39,7 @@ class MushafAudioPlayer extends StatefulWidget {
     this.autoPlayContinues = false,
     this.autoPlayReciter,
     required this.onClose,
+    required this.theme,
   });
 
   @override
@@ -59,12 +62,28 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   // Word sync data
   final RecitationSyncService _syncService = RecitationSyncService();
   List<Map<String, dynamic>> _currentAyahSegments = [];
+  bool _isPageTurnTriggered = false;
 
   // 📖 Repetition State
   int _currentAyahIteration = 1;
   int _ayahRepeatCount = 1;
   int _currentRangeIteration = 1;
   int _rangeRepeatCount = 1;
+
+  Color get _deepGreen {
+    switch (widget.theme) {
+      case ThemeService.mushafPremium: return const Color(0xFF33270F);
+      case ThemeService.mushafDark: return const Color(0xFF05110E);
+      default: return const Color(0xFF031E17);
+    }
+  }
+
+  Color get _richGold {
+    switch (widget.theme) {
+      case ThemeService.mushafDark: return const Color(0xFFD4A947).withValues(alpha: 0.6);
+      default: return const Color(0xFFD4A947);
+    }
+  }
 
   @override
   void initState() {
@@ -88,45 +107,37 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
         if (_currentSurah != state.surah || _currentAyah != state.ayah) {
           _currentSurah = state.surah;
           _currentAyah = state.ayah;
-          // 🎯 Fetch timestamps for the new Ayah (Phase 64)
+          // 🎯 Clear old segments before fetching new ones so we don't accidentally use wrong timings!
+          _currentAyahSegments = [];
+          
+          // 🎯 Fetch timestamps for the new Ayah
           _syncService.getVerseTimestamps(7, '$_currentSurah:$_currentAyah').then((segments) {
              if (mounted) setState(() => _currentAyahSegments = segments);
           });
+          
+          // 📢 Notify parent ONLY when the Ayah actually changes (fixes word highlight clearing bug)
+          widget.onAyahChanged(state.surah, state.ayah);
         }
       });
 
-      // Notify parent for highlight
-      widget.onAyahChanged(state.surah, state.ayah);
-
-      // Handle Word Synchronization (only if playing currently active Ayah)
-      if (state.page == widget.pageNumber) {
-        _syncWords(state.position);
-      } else {
-        if (widget.onWordChanged != null) widget.onWordChanged!(null);
-      }
-
-      // 🌅 Handle automatic page transition when playlist ends
-      if (state.processingState == ProcessingState.completed) {
-        final lastIdx = _pageVerses.length - 1;
-        final currentIdx = _pageVerses.indexWhere((v) => v['surah'] == state.surah && v['ayah'] == state.ayah);
-        
-        if (currentIdx == lastIdx && lastIdx != -1) {
-          // Playlist for this page has finished and no repetition is pending (handled by AudioService)
-          if (_ayahRepeatCount <= 1 && _rangeRepeatCount <= 1 && widget.onEndOfPage != null) {
-            debugPrint('📄 End of page reached, triggering transition');
-            widget.onEndOfPage!();
-          }
+      // 🏁 Handle Sequence Completion → trigger page turn ONE time
+      if (_audioService.isSequenceComplete && widget.onEndOfPage != null) {
+        if (!_isPageTurnTriggered) {
+          _isPageTurnTriggered = true;
+          debugPrint('🏁 [MushafAudioPlayer] Sequence complete on page ${widget.pageNumber}. Triggering page turn.');
+          widget.onEndOfPage!();
         }
+        return; // Don't process further until new page loads
       }
 
-      // Handle end of page transition (if the service is playing something else)
-      if (state.page > widget.pageNumber && widget.onEndOfPage != null) {
-        // Handled by the logic above for sequential play
+      // Handle Word Synchronization
+      if (state.isPlaying) {
+        _syncWords(state.position);
       }
     });
 
-    // Initial load without auto-play unless an initialAyah is provided
-    _initPlayer(playAfterLoad: widget.initialAyah != null);
+    // Initial load without auto-play unless an initialAyah is provided or autoPlay is active
+    _initPlayer(playAfterLoad: widget.initialAyah != null || widget.autoPlayContinues);
   }
 
   void _syncWords(Duration pos) {
@@ -143,16 +154,33 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   void didUpdateWidget(MushafAudioPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     
-    // 🌅 If page changed, update playlist. Only continue play if we were already playing.
-    // 🌅 If page changed, update playlist.
     if (oldWidget.pageNumber != widget.pageNumber) {
-      debugPrint('📄 Page Changed: ${oldWidget.pageNumber} -> ${widget.pageNumber}');
-      // 🚀 Continue playing if we were playing OR if it's an auto-advance
-      _initPlayer(playAfterLoad: _isPlaying || widget.autoPlayContinues);
+      debugPrint('📄 [MushafAudioPlayer] UI Page Moved: ${oldWidget.pageNumber} -> ${widget.pageNumber}');
+      _isPageTurnTriggered = false; // 🔄 Reset the one-off trigger for the new page
+      
+      // 🚀 IF it was an auto-advance (seamless transition), skip _initPlayer
+      // BUT if it was a manual swipe, we MUST restart to synchronize.
+      final currentState = _audioService.lastEmittedState;
+      bool isAlreadyOnNewPage = currentState != null && currentState.page == widget.pageNumber;
+      
+      if (widget.autoPlayContinues && isAlreadyOnNewPage && _audioService.isPlaying) {
+        debugPrint('🚀 [MushafAudioPlayer] Seamless transition. Maintaining current flow.');
+        _loadPageData(); // Just refresh background verses
+        return;
+      }
+
+      // Restart sequence for manual page jumps OR if audio was playing and we moved manually
+      bool shouldPlay = _audioService.isPlaying || widget.autoPlayContinues;
+      _initPlayer(playAfterLoad: shouldPlay);
     } 
-    // 🎯 If a specific Ayah was tapped (new initialAyah), start playing it immediately.
+    // 🎯 If a specific Ayah was tapped (new initialAyah)
     else if (widget.initialAyah != null && widget.initialAyah != oldWidget.initialAyah) {
       debugPrint('🎯 Ayah Tapped: ${widget.initialSurah}:${widget.initialAyah}');
+      _initPlayer(playAfterLoad: true);
+    }
+    // 🚀 If auto-play was just enabled (e.g. from a seamless page transition where the widget was preloaded)
+    else if (widget.autoPlayContinues && !oldWidget.autoPlayContinues) {
+      debugPrint('🚀 Auto-play enabled via transition on page ${widget.pageNumber}');
       _initPlayer(playAfterLoad: true);
     }
   }
@@ -165,15 +193,21 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   }
 
   Future<void> _loadPageData() async {
-    final coords = await AyahSyncService().getPageCoordinates(widget.pageNumber);
-    final Set<String> uniqueVerses = {};
     final List<Map<String, int>> verses = [];
-    
-    for (var c in coords) {
-      final key = '${c.surahNumber}:${c.ayahNumber}';
+    final Set<String> uniqueVerses = {};
+
+    // 🎯 Load ONLY the current page's verses INSTANTLY and OFFLINE
+    final pageVersesData = await QuranTextService().getVersesByPage(widget.pageNumber);
+    for (var verse in pageVersesData) {
+      final vKey = verse['verse_key'] as String;
+      final parts = vKey.split(':');
+      final sNum = int.parse(parts[0]);
+      final ayahNum = int.parse(parts[1]);
+      
+      final key = '$sNum:$ayahNum';
       if (!uniqueVerses.contains(key)) {
         uniqueVerses.add(key);
-        verses.add({'surah': c.surahNumber, 'ayah': c.ayahNumber});
+        verses.add({'surah': sNum, 'ayah': ayahNum});
       }
     }
 
@@ -192,14 +226,30 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       if (_pageVerses.isNotEmpty) {
         int startIdx = 0;
         if (widget.initialAyah != null) {
+          // 🎯 Search for the PRECISE Ayah+Surah combination for absolute accuracy
           final idx = _pageVerses.indexWhere((v) => 
             v['ayah'] == widget.initialAyah && 
             (widget.initialSurah == null || v['surah'] == widget.initialSurah)
           );
-          startIdx = idx != -1 ? idx : 0;
+          
+          if (idx != -1) {
+            startIdx = idx;
+          } else {
+            // Fallback: search by ayah only if surah doesn't match (should rarely happen on same page)
+            final fallbackIdx = _pageVerses.indexWhere((v) => v['ayah'] == widget.initialAyah);
+            startIdx = fallbackIdx != -1 ? fallbackIdx : 0;
+          }
         } else if (widget.autoPlayContinues) {
-          // 🚀 Seamless transition: Start from first Ayah of the new page
-          startIdx = 0;
+          // 🚀 Seamless page transition from the AudioService's current state
+          final currentState = _audioService.lastEmittedState;
+          if (currentState != null && currentState.page == widget.pageNumber) {
+            final idx = _pageVerses.indexWhere((v) => 
+              v['surah'] == currentState.surah && v['ayah'] == currentState.ayah
+            );
+            startIdx = idx != -1 ? idx : 0;
+          } else {
+            startIdx = 0;
+          }
         }
 
         debugPrint('🔄 Dynamic Sequence Init: Page ${widget.pageNumber} (Play: $playAfterLoad)');
@@ -224,9 +274,9 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       height: 64, // 🚀 Compact Height
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       decoration: BoxDecoration(
-        color: AppColors.emerald.withValues(alpha: 0.9), // Slightly more transparent
+        color: _deepGreen.withValues(alpha: 0.95), // 🎨 Theme-aware
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.25), width: 1.2),
+        border: Border.all(color: _richGold.withValues(alpha: 0.3), width: 1.5), // 🎨 Theme-aware
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.4),
@@ -253,7 +303,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                   height: 2,
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: 0.1),
+                    color: _richGold.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(1),
                   ),
                   child: FractionallySizedBox(
@@ -261,10 +311,10 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                     widthFactor: progress.clamp(0.0, 1.0),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppColors.gold,
+                        color: _richGold,
                         borderRadius: BorderRadius.circular(1),
                         boxShadow: [
-                          BoxShadow(color: AppColors.gold.withValues(alpha: 0.5), blurRadius: 4),
+                          BoxShadow(color: _richGold.withValues(alpha: 0.5), blurRadius: 4),
                         ],
                       ),
                     ),
@@ -312,20 +362,20 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.gold.withValues(alpha: 0.5), width: 1.5),
+          border: Border.all(color: _richGold.withValues(alpha: 0.5), width: 1.5),
         ),
         child: Stack(
           alignment: Alignment.bottomRight,
           children: [
             CircleAvatar(
               radius: 20, // 🚀 Smaller Avatar
-              backgroundColor: AppColors.gold.withValues(alpha: 0.1),
+              backgroundColor: _richGold.withValues(alpha: 0.1),
               backgroundImage: _selectedReciter != null ? NetworkImage(_selectedReciter!.imageUrl) : null,
-              child: _selectedReciter == null ? const Icon(Icons.person, color: AppColors.gold, size: 20) : null,
+              child: _selectedReciter == null ? Icon(Icons.person, color: _richGold, size: 20) : null,
             ),
             Container(
               padding: const EdgeInsets.all(1.5),
-              decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: _richGold, shape: BoxShape.circle),
               child: const Icon(Icons.swap_horiz_rounded, size: 8, color: Colors.black),
             ),
           ],
@@ -344,7 +394,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
           enabled: true,
           onTap: _showRepetitionSettings,
           size: 20, // Smaller size
-          color: (_ayahRepeatCount > 1 || _rangeRepeatCount > 1) ? AppColors.gold : Colors.white54,
+          color: (_ayahRepeatCount > 1 || _rangeRepeatCount > 1) ? _richGold : Colors.white54,
         ),
         const SizedBox(width: 4), // Reduced spacing
 
@@ -364,21 +414,34 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
             }
             HapticFeedback.lightImpact();
           },
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.gold,
-              boxShadow: [
-                BoxShadow(color: AppColors.gold.withValues(alpha: 0.2), blurRadius: 8),
-              ],
-            ),
-            child: Icon(
-              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: Colors.black,
-              size: 28,
-            ),
+          child: StreamBuilder<PlayerState>(
+            stream: _audioService.playerStateStream,
+            builder: (context, snapshot) {
+              final state = snapshot.data?.processingState;
+              final isBuffering = state == ProcessingState.buffering || state == ProcessingState.loading;
+              
+              return Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _richGold,
+                  boxShadow: [
+                    BoxShadow(color: _richGold.withValues(alpha: 0.2), blurRadius: 8),
+                  ],
+                ),
+                child: isBuffering 
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    )
+                  : Icon(
+                      _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: widget.theme == ThemeService.mushafPremium ? const Color(0xFF33270F) : Colors.black,
+                      size: 28,
+                    ),
+              );
+            }
           ),
         ),
         const SizedBox(width: 12),
@@ -398,9 +461,9 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          _currentSurah > 0 ? 'سورة ${QuranPageHelper.surahNames[_currentSurah - 1]}' : 'جاهز للتلاوة',
+          _currentAyah > 0 ? 'سورة ${QuranPageHelper.surahNames[_currentSurah - 1]}' : 'جاهز للتلاوة',
           style: GoogleFonts.amiri(
-            color: AppColors.gold,
+            color: _richGold,
             fontSize: 13, // 🚀 Compact Text
             fontWeight: FontWeight.bold,
           ),
@@ -414,7 +477,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (_ayahRepeatCount > 1) 
-                _buildIterationBadge('$_currentAyahIteration/$_ayahRepeatCount', AppColors.gold),
+                _buildIterationBadge('$_currentAyahIteration/$_ayahRepeatCount', _richGold),
               if (_rangeRepeatCount > 1)
                 _buildIterationBadge('الجولة $_currentRangeIteration', Colors.blue[300]!),
               
@@ -474,7 +537,7 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     Color? color,
   }) {
     return IconButton(
-      icon: Icon(icon, color: color ?? (enabled ? AppColors.gold : Colors.white24), size: size),
+      icon: Icon(icon, color: color ?? (enabled ? _richGold : Colors.white24), size: size),
       onPressed: enabled ? onTap : null,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
@@ -490,16 +553,16 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
           return Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.background.withValues(alpha: 0.98),
+              color: _deepGreen.withValues(alpha: 0.98),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+              border: Border.all(color: _richGold.withValues(alpha: 0.2)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
                 const SizedBox(height: 20),
-                Text('إعدادات التكرار (الحفظ) 📖', style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 20, fontWeight: FontWeight.bold)),
+                Text('إعدادات التكرار (الحفظ) 📖', style: GoogleFonts.amiri(color: _richGold, fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 24),
                 
                 // Ayah Repeat
@@ -535,8 +598,8 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.gold,
-                      foregroundColor: Colors.black,
+                      backgroundColor: _richGold,
+                      foregroundColor: widget.theme == ThemeService.mushafPremium ? const Color(0xFF33270F) : Colors.black,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
@@ -573,9 +636,9 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                     margin: const EdgeInsets.only(left: 8),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppColors.gold : Colors.white10,
+                      color: isSelected ? _richGold : Colors.white10,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: isSelected ? AppColors.gold : Colors.white24, width: 1.5),
+                      border: Border.all(color: isSelected ? _richGold : Colors.white24, width: 1.5),
                     ),
                     child: Text(
                       opt == 0 ? '∞' : '$opt',
@@ -603,16 +666,16 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       builder: (context) => Container(
         height: 400,
         decoration: BoxDecoration(
-          color: AppColors.background.withValues(alpha: 0.98),
+          color: _deepGreen.withValues(alpha: 0.98),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          border: Border.all(color: AppColors.gold.withValues(alpha: 0.2)),
+          border: Border.all(color: _richGold.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [
             const SizedBox(height: 12),
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
-            Text('اختر القارئ', style: GoogleFonts.amiri(color: AppColors.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+            Text('اختر القارئ', style: GoogleFonts.amiri(color: _richGold, fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             Expanded(
               child: ListView.builder(
@@ -623,8 +686,8 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
                   final isSelected = _selectedReciter?.id == r.id;
                   return ListTile(
                     leading: CircleAvatar(backgroundImage: NetworkImage(r.imageUrl)),
-                    title: Text(r.name, style: GoogleFonts.amiri(color: isSelected ? AppColors.gold : Colors.white, fontSize: 18)),
-                    trailing: isSelected ? const Icon(Icons.check_circle, color: AppColors.gold) : null,
+                    title: Text(r.name, style: GoogleFonts.amiri(color: isSelected ? _richGold : Colors.white, fontSize: 18)),
+                    trailing: isSelected ? Icon(Icons.check_circle, color: _richGold) : null,
                     onTap: () async {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setString('selected_reciter_id', r.id);

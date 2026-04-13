@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_10y.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:app_settings/app_settings.dart';
 import 'package:dio/dio.dart';
 
 /// خدمة الإشعارات الذكية — Smart Push Notification Service
@@ -29,7 +31,7 @@ class NotificationService {
 
   // Notification channel IDs
   static const String _channelId = 'tala_quran_notifications';
-  static const String _channelName = 'إشعارات تلا قرآن';
+  static const String _channelName = 'إشعارات تلا القرآن';
   static const String _channelDesc = 'إشعارات تذكيرية بالقراءة والآيات اليومية';
 
   // Notification IDs
@@ -45,58 +47,81 @@ class NotificationService {
 
   /// تهيئة النظام — Initialize notification system
   static Future<void> initialize() async {
-    // 🚀 تهيئة التوقيت والاشعارات في الخلفية (Background)
-    // Initialize in background to avoid blocking splash
+    // 🚀 تهيئة التوقيت والاشعارات بشكل متسلسل لضمان الجاهزية
     tz_data.initializeTimeZones();
     
-    // Don't await these synchronously - let them run
-    Future.microtask(() async {
-      try {
-        final timezoneName = await FlutterTimezone.getLocalTimezone();
-        tz.setLocalLocation(tz.getLocation(timezoneName));
-      } catch (_) {
-        tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
-      }
+    try {
+      final timezoneName = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timezoneName));
+    } catch (_) {
+      // Fallback to Cairo if detection fails
+      tz.setLocalLocation(tz.getLocation('Africa/Cairo'));
+    }
 
-      const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
-      const initSettings = InitializationSettings(android: androidSettings);
+    const androidSettings = AndroidInitializationSettings('@mipmap/launcher_icon');
+    const initSettings = InitializationSettings(android: androidSettings);
 
-      await _notifPlugin.initialize(
-        initSettings,
-        onDidReceiveNotificationResponse: _onNotificationTapped,
-      );
+    await _notifPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse: _onNotificationTapped, // Added for background reliability
+    );
 
-      // 🔔 Request Permissions for Android 13+ and Exact Alarms
-      await requestPermissions();
-
-      // Load verse database and schedule
-      await _loadVerseDb();
-      await _rescheduleAll();
-      
-      // Auto-refresh from internet (silent)
-      await refreshVerseDb();
-    });
+    // Load verse database and initial schedule
+    await _loadVerseDb();
+    await _rescheduleAll();
+    
+    // Auto-refresh from internet (silent)
+    await refreshVerseDb();
   }
 
   /// طلب صلاحيات الإشعارات — Request notification permissions
-  static Future<void> requestPermissions() async {
+  static Future<Map<String, bool>> checkAndRequestPermissions() async {
+    // 1. استخدام permission_handler للطلب والحصول على الحالة بشكل أدق
+    final status = await Permission.notification.status;
+    bool notifGranted = status.isGranted;
+
+    if (status.isDenied) {
+      notifGranted = await Permission.notification.request().isGranted;
+    }
+
+    // 2. التحقق من المنبهات الدقيقة (Android 12+) عبر Plugin
     final androidPlugin = _notifPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     
-    if (androidPlugin != null) {
-      // 1. Request POST_NOTIFICATIONS for Android 13+
-      await androidPlugin.requestNotificationsPermission();
-      
-      // 2. Request EXACT_ALARM for Android 12+
-      await androidPlugin.requestExactAlarmsPermission();
-      
-      debugPrint('🔔 Notification Permissions Requested');
+    final bool canScheduleExact = await androidPlugin?.canScheduleExactNotifications() ?? false;
+    
+    return {
+      'notifications': notifGranted,
+      'exact': canScheduleExact,
+      'permanentlyDenied': status.isPermanentlyDenied,
+    };
+  }
+
+  /// فتح إعدادات الإشعارات الخاصة بالتطبيق — Open App Notification Settings
+  static Future<void> openNotificationSettings() async {
+    try {
+      await AppSettings.openAppSettings(type: AppSettingsType.notification);
+    } catch (_) {
+      await openAppSettings(); // Fallback to general app settings
+    }
+  }
+
+  /// فتح إعدادات "المنبهات والدقائق" — Open exact alarm settings
+  static Future<void> openExactAlarmSettings() async {
+    const intent = 'android.settings.REQUEST_SCHEDULE_EXACT_ALARM';
+    const channel = MethodChannel('com.ahmed.tala_quran/settings');
+    try {
+      await channel.invokeMethod('openSettings', intent);
+    } catch (e) {
+      debugPrint('Error opening exact alarm settings: $e');
     }
   }
 
   /// معالجة الضغط على الإشعار — Handle notification tap
+  @pragma('vm:entry-point')
   static void _onNotificationTapped(NotificationResponse response) {
-    debugPrint('Notification tapped: ${response.payload}');
+    debugPrint('🚀 [Background/Foreground] Notification tapped: ${response.payload}');
     onNotificationTap?.call(response.payload);
   }
 
@@ -174,6 +199,33 @@ class NotificationService {
     };
   }
 
+  /// إرسال إشعار فوري (للاختبار) — Send immediate notification for testing
+  static Future<void> sendImmediateNotification({String? title, String? body}) async {
+    final message = title != null 
+        ? {'title': title, 'body': body ?? ''} 
+        : _getRandomFromCategory('daily_verse');
+
+    const androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: _channelDesc,
+      importance: Importance.max,
+      priority: Priority.max,
+      icon: '@mipmap/launcher_icon',
+      showWhen: true,
+    );
+
+    const notifDetails = NotificationDetails(android: androidDetails);
+
+    await _notifPlugin.show(
+      999, // Test ID
+      message['title'],
+      message['body'],
+      notifDetails,
+      payload: 'test_notification',
+    );
+  }
+
   // ===================== SCHEDULING =====================
 
   /// إعادة جدولة جميع الإشعارات — Reschedule all
@@ -246,20 +298,27 @@ class NotificationService {
 
     final scheduledDate = _nextInstanceOfTime(hour, minute);
 
+    // Check for exact alarm permission
+    final bool canScheduleExact = await _notifPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.canScheduleExactNotifications() ?? false;
+
     await _notifPlugin.zonedSchedule(
       id,
       message['title'],
       message['body'],
       scheduledDate,
-       notifDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      notifDetails,
+      androidScheduleMode: canScheduleExact 
+          ? AndroidScheduleMode.exactAllowWhileIdle 
+          : AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
       payload: category,
     );
 
-    debugPrint('📅 Scheduled Daily Notification ($category) at $hour:$minute (ID: $id)');
+    debugPrint('📅 Scheduled Daily Notification ($category) at $hour:$minute (ID: $id) [Exact: $canScheduleExact]');
   }
   /// جدولة إشعار مفصل بدقة متناهية (لآية اليوم والمحفزات)
   /// Schedule a detailed exact notification with a specific date and payload
@@ -280,19 +339,25 @@ class NotificationService {
       styleInformation: BigTextStyleInformation(''), // Will be set by body
     );
 
+    final bool canScheduleExact = await _notifPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.canScheduleExactNotifications() ?? false;
+
     await _notifPlugin.zonedSchedule(
       id,
       title,
       body,
       scheduledDate,
       const NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: canScheduleExact 
+          ? AndroidScheduleMode.exactAllowWhileIdle 
+          : AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dateAndTime, // Crucial for daily/weekly
       payload: payload,
     );
 
-    debugPrint('🎯 Scheduled Detailed Notification: $title at $scheduledDate (ID: $id)');
+    debugPrint('🎯 Scheduled Detailed Notification: $title at $scheduledDate (ID: $id) [Exact: $canScheduleExact]');
   }
 
   /// جدولة إشعار من فئة معينة بدقة متناهية (للمحفزات الذكية)
@@ -314,16 +379,23 @@ class NotificationService {
       icon: '@mipmap/launcher_icon',
     );
 
+    final bool canScheduleExact = await _notifPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.canScheduleExactNotifications() ?? false;
+
     await _notifPlugin.zonedSchedule(
       id,
       message['title']!,
       message['body']!,
       scheduledDate,
       const NotificationDetails(android: androidDetails),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle, // 🎯 Critical for exact nudges
+      androidScheduleMode: canScheduleExact 
+          ? AndroidScheduleMode.exactAllowWhileIdle 
+          : AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: category,
     );
+    debugPrint('🎯 Scheduled Exact Category Notification ($category) (ID: $id) [Exact: $canScheduleExact]');
   }
 
   /// إلغاء إشعار محدد — Cancel a specific notification

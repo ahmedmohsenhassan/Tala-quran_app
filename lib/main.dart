@@ -1,4 +1,4 @@
-// 🕌 مشروع "تلا قرآن" - نقطة البداية
+// 🕌 مشروع "تلا القرآن" - نقطة البداية
 // 🌐 Tala Quran App - Entry Point
 
 import 'dart:convert';

@@ -85,6 +85,20 @@ class BookmarkService {
     }
   }
 
+  /// الحصول على الملاحظة/الخاطرة المكتوبة لآية معينة (إن وجدت)
+  /// Get note for a specific Ayah
+  static Future<String?> getNoteForAyah(int surahNumber, int ayahNumber) async {
+    final bookmarks = await getBookmarks();
+    try {
+      final b = bookmarks.firstWhere((b) =>
+          b['surahNumber'] == surahNumber && b['ayahNumber'] == ayahNumber);
+      final note = b['note'] as String?;
+      return (note != null && note.trim().isNotEmpty) ? note : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// حفظ علامة مرجعية لصفحة
   /// Save a bookmark for a Page
   static Future<void> addPageBookmark({

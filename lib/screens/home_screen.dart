@@ -353,6 +353,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        // 🔔 Temporary Test Button
+                        GestureDetector(
+                          onTap: () => NotificationService.sendImmediateNotification(
+                            title: 'تجربة الإشعارات 🔔',
+                            body: 'إذا رأيت هذا التنبيه، فهذا يعني أن النظام يعمل بنجاح! 🎉',
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.gold,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'تجربة إشعار',
+                              style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),

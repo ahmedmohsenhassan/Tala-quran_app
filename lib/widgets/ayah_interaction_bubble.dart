@@ -1,9 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/quran_database_service.dart';
 import '../services/quran_resource_service.dart';
 import '../services/tafseer_service.dart';
+import '../services/bookmark_service.dart';
+import '../utils/quran_page_helper.dart';
+import 'ayah_share_card.dart';
 
 class AyahInteractionBubble extends StatefulWidget {
   final int surah;
@@ -35,6 +39,7 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
   final Color _deepGreen = const Color(0xFF031E17);
   final QuranDatabaseService _db = QuranDatabaseService();
   final QuranResourceService _resourceService = QuranResourceService();
+  final TextEditingController _noteController = TextEditingController();
   
   bool _isTafseerOffline = false;
   bool _isDownloading = false;
@@ -42,8 +47,18 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _checkOfflineStatus();
+    _loadExistingNote();
+  }
+
+  Future<void> _loadExistingNote() async {
+    final existingNote = await BookmarkService.getNoteForAyah(widget.surah, widget.ayah);
+    if (existingNote != null && mounted) {
+      setState(() {
+        _noteController.text = existingNote;
+      });
+    }
   }
 
   Future<void> _checkOfflineStatus() async {
@@ -90,6 +105,7 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
   @override
   void dispose() {
     _tabController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -103,7 +119,7 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Container(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.of(context).size.height * 0.55,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -143,6 +159,7 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
                     children: [
                       _buildTafseerContent(),
                       _buildContent(widget.translation, isArabic: false),
+                      _buildNoteEditor(),
                     ],
                   ),
                 ),
@@ -221,6 +238,7 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
         tabs: const [
           Tab(text: "التفسير"),
           Tab(text: "الترجمة"),
+          Tab(text: "تأملات"),
         ],
       ),
     );
@@ -276,15 +294,160 @@ class _AyahInteractionBubbleState extends State<AyahInteractionBubble> with Sing
     );
   }
 
+  Widget _buildNoteEditor() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Icon(Icons.edit_note_rounded, color: _accentGold, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  "مذكرتك القرآنية محفوظة بأمان لك",
+                  style: GoogleFonts.amiri(
+                    color: _accentGold,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextField(
+            controller: _noteController,
+            maxLines: 5,
+            textDirection: TextDirection.rtl,
+            style: GoogleFonts.amiri(fontSize: 16, color: _deepGreen),
+            decoration: InputDecoration(
+              hintText: 'اكتب تأملك الشخصي حول الآية هنا...',
+              hintTextDirection: TextDirection.rtl,
+              hintStyle: GoogleFonts.amiri(color: Colors.grey.shade500),
+              filled: true,
+              fillColor: _accentGold.withValues(alpha: 0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: _accentGold.withValues(alpha: 0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: _accentGold.withValues(alpha: 0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: _accentGold, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final note = _noteController.text.trim();
+              if (note.isNotEmpty) {
+                final surahName = QuranPageHelper.surahNames[widget.surah - 1];
+                await BookmarkService.addBookmark(
+                  surahNumber: widget.surah,
+                  ayahNumber: widget.ayah,
+                  surahName: surahName,
+                  note: note,
+                );
+                if (mounted) {
+                  FocusScope.of(context).unfocus();
+                  Navigator.pop(context); // Close popup so user can see snackbar
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ تم حفظ الخاطرة بنجاح'),
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                    ),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.check_rounded, size: 20),
+            label: Text(
+              'حفظ الخاطرة',
+              style: GoogleFonts.amiri(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _accentGold,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBottomActions() {
+    final surahName = QuranPageHelper.surahNames[widget.surah - 1];
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _ActionButton(icon: Icons.copy_rounded, label: "نسخ", onTap: () {}),
-          _ActionButton(icon: Icons.share_rounded, label: "مشاركة", onTap: () {}),
-          _ActionButton(icon: Icons.bookmark_border_rounded, label: "حفظ", onTap: () {}),
+          _ActionButton(
+            icon: Icons.copy_rounded, 
+            label: "نسخ", 
+            onTap: () {
+              final text = 'سورة $surahName — الآية ${widget.ayah}\n~ تلا القرآن 🕌';
+              Clipboard.setData(ClipboardData(text: text));
+              Navigator.pop(context); // Close popup
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('📋 تم النسخ بنجاح'),
+                  duration: Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  margin: EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                ),
+              );
+            }
+          ),
+          _ActionButton(
+            icon: Icons.share_rounded, 
+            label: "مشاركة", 
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AyahShareCard(
+                    ayahText: 'الآية ${widget.ayah}', 
+                    surahName: surahName,
+                    ayahNumber: widget.ayah,
+                    surahNumber: widget.surah,
+                  ),
+                ),
+              );
+            }
+          ),
+          _ActionButton(
+            icon: Icons.bookmark_add_rounded, 
+            label: "حفظ", 
+            onTap: () {
+              BookmarkService.addBookmark(
+                surahNumber: widget.surah,
+                ayahNumber: widget.ayah,
+                surahName: surahName,
+              );
+              Navigator.pop(context); // Close popup
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✅ تم حفظ الآية ${widget.ayah} من سورة $surahName'),
+                  duration: const Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                ),
+              );
+            }
+          ),
         ],
       ),
     );

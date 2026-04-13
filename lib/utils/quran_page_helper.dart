@@ -1,6 +1,58 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
 /// خريطة لربط كل سورة بأول صفحة تبدأ منها في مصحف المدينة
 /// Map connecting each Surah to its starting page in Madinah Mushaf
 class QuranPageHelper {
+  // ============================================================
+  //  🗺️ AYAH → PAGE LOOKUP MAP (built from local verse JSON files)
+  // ============================================================
+  static Map<String, int>? _ayahPageMap;
+  static bool _isBuilding = false;
+
+  /// Pre-load the ayah→page map at app startup for instant lookups.
+  /// Call this in main.dart or MushafViewerScreen.initState.
+  static Future<void> preloadAyahPageMap() async {
+    if (_ayahPageMap != null || _isBuilding) return;
+    _isBuilding = true;
+    try {
+      final Map<String, int> map = {};
+      // Read all 604 page verse files in parallel batches
+      const int batchSize = 50;
+      for (int start = 1; start <= 604; start += batchSize) {
+        final int end = (start + batchSize - 1).clamp(1, 604);
+        final futures = <Future<void>>[];
+        for (int page = start; page <= end; page++) {
+          futures.add(_loadPageVerses(page, map));
+        }
+        await Future.wait(futures);
+      }
+      _ayahPageMap = map;
+      debugPrint('✅ [QuranPageHelper] Ayah→Page map built: ${map.length} entries');
+    } catch (e) {
+      debugPrint('❌ [QuranPageHelper] Failed to build ayah page map: $e');
+    } finally {
+      _isBuilding = false;
+    }
+  }
+
+  static Future<void> _loadPageVerses(int page, Map<String, int> map) async {
+    try {
+      final String data = await rootBundle.loadString(
+        'assets/mushaf/data/verses_p$page.json',
+      );
+      final List<dynamic> verses = jsonDecode(data);
+      for (var verse in verses) {
+        final String verseKey = verse['verse_key'] as String;
+        // Only store the first occurrence (first page where this ayah appears)
+        map.putIfAbsent(verseKey, () => page);
+      }
+    } catch (e) {
+      // Silently skip missing files
+    }
+  }
+
   static const Map<int, int> surahStartPage = {
     1: 1,
     2: 2,
@@ -137,11 +189,16 @@ class QuranPageHelper {
     return closestSurah;
   }
 
-  /// الحصول على رقم الصفحة لآية معينة
+  /// الحصول على رقم الصفحة لآية معينة (دقيق 100%)
+  /// Uses pre-built ayah→page map from local verse JSON files.
+  /// Falls back to surah start page if map not loaded yet.
   static int getPageForAyah(int surah, int ayah) {
-    // This is a simplified version. For full precision, we would need 
-    // a pre-generated map of every ayah to its page.
-    // For now, we return the surah start page as a baseline.
+    if (_ayahPageMap != null) {
+      final key = '$surah:$ayah';
+      final page = _ayahPageMap![key];
+      if (page != null) return page;
+    }
+    // Fallback: use surah start page (better than nothing)
     return getPageForSurah(surah);
   }
 

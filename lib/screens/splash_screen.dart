@@ -12,6 +12,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/daily_verse_service.dart';
+import '../services/streak_service.dart';
+import '../services/reading_stats_service.dart';
+import '../services/achievement_service.dart';
 
 // ============================================================
 //  Premium Colors for Splash
@@ -97,7 +101,21 @@ class _SplashScreenState extends State<SplashScreen>
         vsync: this, duration: const Duration(milliseconds: 2000))
       ..repeat();
 
+    _prefetchHomeData(); // 🏠 Start background loading immediately
     _startSequence();
+  }
+
+  /// 🏠 Pre-fetch heavy dashboard data while book is opening
+  void _prefetchHomeData() {
+    Future.wait([
+      DailyVerseService.getTodayVerse(),
+      StreakService.getStreakData(),
+      ReadingStatsService.getStats(),
+      Provider.of<AchievementService>(context, listen: false).init(),
+    ]).catchError((e) {
+      debugPrint('🏠 Dashboard Pre-fetch Error: $e');
+      return <void>[]; 
+    });
   }
 
   @override
@@ -216,13 +234,13 @@ class _SplashScreenState extends State<SplashScreen>
           }
         });
       } else {
-        // Normal Launch
+        // 🚀 FAST STARTUP: Normal Launch -> DIRECT TO MUSHAF
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => MainDashboardScreen(
-              autoOpenPage: _lastReadPage,
+            builder: (_) => MushafViewerScreen(
+              initialPage: _lastReadPage,
             ),
           ),
         );
@@ -364,7 +382,7 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           children: [
             Text(
-              'تلا قرآن',
+              'تلا القرآن',
               style: GoogleFonts.amiri(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -661,7 +679,7 @@ class _PremiumBookCover extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'تلا قرآن',
+            'تلا القرآن',
             style: GoogleFonts.amiri(
               color: _kLightGold.withValues(alpha: 0.6),
               fontSize: 14,

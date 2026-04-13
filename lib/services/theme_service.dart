@@ -102,7 +102,7 @@ class ThemeService {
   /// استرجاع الخط المختار
   static Future<String> getThemeFont() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_fontKey) ?? fontAmiri; // افتراضي: أميري
+    return prefs.getString(_fontKey) ?? fontUthmanic; // افتراضي: عثماني
   }
 
   /// حفظ الخط المختار

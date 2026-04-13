@@ -256,12 +256,12 @@ class SettingsTab extends StatelessWidget {
                   const SizedBox(height: 16),
                   _buildSettingsCard(
                     icon: Icons.info_outline_rounded,
-                    title: 'عن تطبيق تلا قرآن',
+                    title: 'عن تطبيق تلا القرآن',
                     subtitle: 'الإصدار 1.0.0',
                     onTap: () {
                       showAboutDialog(
                         context: context,
-                        applicationName: 'تلا قرآن',
+                        applicationName: 'تلا القرآن',
                         applicationVersion: '1.0.0',
                         applicationIcon: Image.asset('assets/images/logo.png', width: 48, height: 48),
                         applicationLegalese: '© 2026 Tala Quran App',

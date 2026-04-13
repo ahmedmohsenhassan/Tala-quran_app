@@ -188,13 +188,12 @@ class _MushafNavigationPickerState extends State<MushafNavigationPicker> {
           
           // Column Labels
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildLabel('الآية'),
-                _buildLabel('السورة'),
-                _buildLabel('الجزء'),
+                Expanded(child: Center(child: _buildLabel('الآية'))),
+                Expanded(flex: 2, child: Center(child: _buildLabel('السورة'))),
+                Expanded(child: Center(child: _buildLabel('الجزء'))),
               ],
             ),
           ),
@@ -220,45 +219,48 @@ class _MushafNavigationPickerState extends State<MushafNavigationPicker> {
                   ),
                 ),
                 
-                Row(
-                  children: [
-                    // Ayah Column
-                    Expanded(
-                      child: CupertinoPicker.builder(
-                        scrollController: _ayahController,
-                        itemExtent: 50,
-                        childCount: maxAyahs,
-                        onSelectedItemChanged: _onAyahChanged,
-                        itemBuilder: (context, index) => _buildPickerItem('${index + 1}'),
-                      ),
-                    ),
-                    
-                    // Surah Column
-                    Expanded(
-                      flex: 2,
-                      child: CupertinoPicker.builder(
-                        scrollController: _surahController,
-                        itemExtent: 50,
-                        childCount: 114,
-                        onSelectedItemChanged: _onSurahChanged,
-                        itemBuilder: (context, index) => _buildPickerItem(
-                          '${index + 1}. ${QuranPageHelper.surahNames[index]}',
-                          isSurah: true,
+                Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: Row(
+                    children: [
+                      // Ayah Column
+                      Expanded(
+                        child: CupertinoPicker.builder(
+                          scrollController: _ayahController,
+                          itemExtent: 50,
+                          childCount: maxAyahs,
+                          onSelectedItemChanged: _onAyahChanged,
+                          itemBuilder: (context, index) => _buildPickerItem('${index + 1}'),
                         ),
                       ),
-                    ),
-                    
-                    // Juz Column
-                    Expanded(
-                      child: CupertinoPicker.builder(
-                        scrollController: _juzController,
-                        itemExtent: 50,
-                        childCount: 30,
-                        onSelectedItemChanged: _onJuzChanged,
-                        itemBuilder: (context, index) => _buildPickerItem('${index + 1}'),
+                      
+                      // Surah Column
+                      Expanded(
+                        flex: 2,
+                        child: CupertinoPicker.builder(
+                          scrollController: _surahController,
+                          itemExtent: 50,
+                          childCount: 114,
+                          onSelectedItemChanged: _onSurahChanged,
+                          itemBuilder: (context, index) => _buildPickerItem(
+                            '\u200E${index + 1}. \u200F${QuranPageHelper.surahNames[index]}',
+                            isSurah: true,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                      
+                      // Juz Column
+                      Expanded(
+                        child: CupertinoPicker.builder(
+                          scrollController: _juzController,
+                          itemExtent: 50,
+                          childCount: 30,
+                          onSelectedItemChanged: _onJuzChanged,
+                          itemBuilder: (context, index) => _buildPickerItem('${index + 1}'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -281,12 +283,22 @@ class _MushafNavigationPickerState extends State<MushafNavigationPicker> {
 
   Widget _buildPickerItem(String text, {bool isSurah = false}) {
     return Center(
-      child: Text(
-        text,
-        style: GoogleFonts.amiri(
-          color: Colors.white.withValues(alpha: 0.9),
-          fontSize: isSurah ? 18 : 20,
-          fontWeight: isSurah ? FontWeight.w500 : FontWeight.bold,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            style: GoogleFonts.amiri(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: isSurah ? 18 : 20,
+              fontWeight: isSurah ? FontWeight.w500 : FontWeight.bold,
+              height: 1.4, // Increased from 1.1 or default
+            ),
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.rtl,
+          ),
         ),
       ),
     );

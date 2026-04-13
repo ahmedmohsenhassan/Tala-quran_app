@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,11 +8,58 @@ import '../utils/quran_page_helper.dart';
 import '../services/download_service.dart';
 import 'dart:io';
 import '../services/ayah_info_service.dart';
-import '../services/tajweed_parser.dart'; // 🎨 New for Phase 103
+import '../services/tajweed_parser.dart';
+
+// ============================================================
+//  دالة مركزية للحصول على TextStyle الصحيح لكل خط عربي
+// ============================================================
+TextStyle getArabicTextStyle({
+  required String fontFamily,
+  required double fontSize,
+  required Color color,
+  FontWeight fontWeight = FontWeight.w500,
+  double height = 1.5,
+  bool forUI = false, // UI elements like headers use simpler style
+}) {
+  switch (fontFamily) {
+    case ThemeService.fontUthmanic:
+      // Amiri Quran is properly shaped for Uthmanic scripts with pause marks and exact ligatures.
+      return GoogleFonts.amiriQuran(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: height,
+      );
+    case ThemeService.fontNaskh:
+      return GoogleFonts.notoNaskhArabic(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: height,
+      );
+    case ThemeService.fontIndopak:
+      // IndoPak uses Noto Nastaliq Urdu as closest match
+      return GoogleFonts.notoNastaliqUrdu(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: height,
+      );
+    case ThemeService.fontAmiri:
+    default:
+      return GoogleFonts.amiri(
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        height: height,
+      );
+  }
+}
 
 class MushafPageRenderer extends StatefulWidget {
   final int pageNumber;
   final Function(int surah, int ayah)? onAyahTapped;
+  final Function(int surah, int ayah)? onAyahLongPressed;
   final int? highlightedAyah;
   final int? highlightedSurah;
   final bool isMemorizationMode;
@@ -21,8 +67,8 @@ class MushafPageRenderer extends StatefulWidget {
   final double fontSize;
   final String fontFamily;
   final String edition;
-  final String? highlightedWordLocation; // 🎙️ For word-by-word sync
-  final bool showTajweed; // 🖌️ New for Phase 103
+  final String? highlightedWordLocation;
+  final bool showTajweed;
   final PageController? pageController;
   final Function(bool isZoomed)? onZoomChanged;
 
@@ -30,6 +76,7 @@ class MushafPageRenderer extends StatefulWidget {
     super.key,
     required this.pageNumber,
     this.onAyahTapped,
+    this.onAyahLongPressed,
     this.highlightedAyah,
     this.highlightedSurah,
     this.isMemorizationMode = false,
@@ -48,7 +95,7 @@ class MushafPageRenderer extends StatefulWidget {
 }
 
 class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProviderStateMixin {
-  static const bool showDebugBoxes = false; // 🐛 Debug Toggle
+  static const bool showDebugBoxes = false;
 
   final QuranTextService _quranService = QuranTextService();
   List<Map<String, dynamic>> _pageData = [];
@@ -59,9 +106,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
   final DownloadService _downloadService = DownloadService();
   final AyahInfoService _ayahInfoService = AyahInfoService();
   Map<String, List<Rect>> _ayahRects = {};
-  Map<int, List<Map<String, dynamic>>> _processedLines = {}; // 🚀 New for Phase 115
-  Map<int, dynamic> _lineMetadata = {}; // 🚀 New: Stores {surah: int, isBismillah: bool}
-  late AnimationController _auraController; // ✨ New for Phase 123
+  Map<int, List<Map<String, dynamic>>> _processedLines = {};
+  Map<int, dynamic> _lineMetadata = {};
+  late AnimationController _auraController;
+
+  // ─── Font Scale Factor ────────────────────────────────────────────────────
+  // Maps slider value (15–50) to a ratio relative to default (24).
+  // This ensures the slider is noticeable throughout its range.
+  double get _fontScaleRatio => widget.fontSize / 24.0;
 
   @override
   void initState() {
@@ -97,7 +149,9 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
   @override
   void didUpdateWidget(MushafPageRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.pageNumber != widget.pageNumber || oldWidget.showTajweed != widget.showTajweed) {
+    if (oldWidget.pageNumber != widget.pageNumber ||
+        oldWidget.showTajweed != widget.showTajweed ||
+        oldWidget.fontFamily != widget.fontFamily) {
       _loadPageData();
       _transformationController.value = Matrix4.identity();
       _isZoomed = false;
@@ -111,12 +165,8 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       final data = await _quranService.getPageWords(widget.pageNumber);
       final localImg = await _downloadService.getLocalPageImage(widget.pageNumber);
       final rects = await _ayahInfoService.getPageAyahMap(widget.pageNumber);
-      
-      
+
       if (mounted) {
-        debugPrint('📖 Page ${widget.pageNumber}: Words=${data.length}, Rects=${rects.length}');
-        
-        // 🚀 PRE-PROCESS DATA FOR 60FPS SWIPING
         final processed = _performLineGrouping(data);
         final metadata = _performMetadataDetection(data);
 
@@ -130,11 +180,8 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
-
     _preCacheSurroundingPages();
   }
 
@@ -158,16 +205,12 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
         final parts = vKey.split(':');
         final sNum = int.parse(parts[0]);
         final ayahNum = int.parse(parts[1]);
-        
         final wordsInVerse = verse['words'] as List<dynamic>? ?? [];
         if (wordsInVerse.isEmpty) continue;
         final firstLineOfAyah = wordsInVerse.first['line_number'] as int? ?? 1;
-        
         if (ayahNum == 1) {
           if (sNum == 1 || sNum == 9) {
-            if (lineIdx == firstLineOfAyah - 1) {
-              metadata[lineIdx] = {'surah': sNum};
-            }
+            if (lineIdx == firstLineOfAyah - 1) metadata[lineIdx] = {'surah': sNum};
           } else {
             if (lineIdx == firstLineOfAyah - 2) {
               metadata[lineIdx] = {'surah': sNum};
@@ -182,46 +225,44 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
   }
 
   Future<void> _preCacheSurroundingPages() async {
-    // 🔥 GPU-accelerated Pre-caching for zero-lag transitions
     if (!mounted) return;
-    
     if (widget.pageNumber < 604) {
       _downloadService.getLocalPageImage(widget.pageNumber + 1).then((File? file) {
-        if (file != null && mounted) {
-          precacheImage(FileImage(file), context);
-        }
+        if (file != null && mounted) precacheImage(FileImage(file), context);
       });
     }
     if (widget.pageNumber > 1) {
       _downloadService.getLocalPageImage(widget.pageNumber - 1).then((File? file) {
-        if (file != null && mounted) {
-          precacheImage(FileImage(file), context);
-        }
+        if (file != null && mounted) precacheImage(FileImage(file), context);
       });
     }
   }
 
+  // ─── Theme Helpers ────────────────────────────────────────────────────────
   Color get _parchmentColor {
     switch (widget.theme) {
       case ThemeService.mushafPremium: return const Color(0xFFFFF8E1);
-      case ThemeService.mushafDark: return const Color(0xFF1E1E1E);
+      case ThemeService.mushafDark: return const Color(0xFF1A1A1A);
       default: return const Color(0xFFFDF5E6);
     }
   }
 
   Color get _textColor {
     switch (widget.theme) {
-      case ThemeService.mushafDark: return const Color(0xFFE0E0E0);
+      case ThemeService.mushafDark: return const Color(0xFFE8E0D0);
       default: return const Color(0xFF1A1A1A);
     }
   }
 
   Color get _ornamentColor {
     switch (widget.theme) {
-      case ThemeService.mushafDark: return const Color(0xFFD4A947).withValues(alpha: 0.6);
+      case ThemeService.mushafDark: return const Color(0xFFD4A947).withValues(alpha: 0.7);
       default: return const Color(0xFFD4A947);
     }
   }
+
+  // ─── Computed Sizes (All scale with fontSize slider) ─────────────────────
+  double _uiFontSize(double base) => (base * _fontScaleRatio).clamp(base * 0.7, base * 1.8);
 
   @override
   Widget build(BuildContext context) {
@@ -232,11 +273,8 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     if (_pageData.isEmpty) {
       return Center(
         child: Text(
-          'تعذر تحميل الصفحة المستندة للنصوص',
-          style: GoogleFonts.amiri(
-            color: AppColors.textMuted,
-            fontSize: 16,
-          ),
+          'تعذر تحميل الصفحة',
+          style: GoogleFonts.amiri(color: AppColors.textMuted, fontSize: 16),
         ),
       );
     }
@@ -245,139 +283,131 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       decoration: BoxDecoration(
         color: _parchmentColor,
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            spreadRadius: 2,
-          )
+          BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 12, spreadRadius: 2)
         ],
       ),
       child: Stack(
         children: [
-          // 🚀 1. Ornate Frame (RepaintBoundary for 60FPS)
+          // ① Ornate Frame
           Positioned.fill(
             child: RepaintBoundary(
               child: CustomPaint(
-                painter: _PageFramePainter(
-                  color: _ornamentColor,
-                  edition: widget.edition,
-                ),
+                painter: _PageFramePainter(color: _ornamentColor, edition: widget.edition),
               ),
             ),
           ),
-          
-          // 2. Interactive Main Content (Image or Text + Interactive Layer)
+
+          // ② Main Content (Text + Image)
           Positioned.fill(
             child: LayoutBuilder(
-              builder: (context, constraints) => Padding(
-                padding: EdgeInsets.zero, // REMOVED redundant padding
-                child: InteractiveViewer(
+              builder: (context, constraints) {
+                // ── Padding ─────────────────────────────────────────────
+                // Top/bottom must clear the header bar and page number footer.
+                // Header bar height: ~48px. Footer: ~38px. Frame: ~14px.
+                const double topBarH = 50.0;
+                const double footerH = 40.0;
+                const double frameP = 16.0;
+                final double hPadding = constraints.maxWidth * 0.065;
+                const double vPaddingTop = topBarH + frameP;
+                const double vPaddingBottom = footerH + frameP;
+
+                final double availableWidth = constraints.maxWidth - (hPadding * 2);
+                final double availableHeight =
+                    constraints.maxHeight - vPaddingTop - vPaddingBottom;
+                final double lineHeight = availableHeight / 15;
+
+                return InteractiveViewer(
                   transformationController: _transformationController,
                   onInteractionUpdate: _onInteractionUpdate,
                   minScale: 1.0,
                   maxScale: 4.0,
                   panEnabled: _isZoomed,
                   scaleEnabled: true,
-                  boundaryMargin: _isZoomed ? const EdgeInsets.all(250) : EdgeInsets.zero,
-                  child: LayoutBuilder(
-                    builder: (context, boxConstraints) {
-                      final double hPadding = boxConstraints.maxWidth * 0.06; // Responsive & Balanced
-                      final double vPadding = boxConstraints.maxHeight * 0.04; // Responsive & Balanced
-                      final double availableWidth = boxConstraints.maxWidth - (hPadding * 2);
-                      final double availableHeight = boxConstraints.maxHeight - (vPadding * 2);
-                      final double lineHeight = availableHeight / 15;
-
-                      return Container(
-                        width: boxConstraints.maxWidth,
-                        height: boxConstraints.maxHeight,
-                        padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: vPadding),
-                        child: Stack(
-                          children: [
-                            // 🚀 A. Visual Image Layer (RepaintBoundary for 60FPS)
-                            if (_localImage != null)
+                  boundaryMargin: _isZoomed ? const EdgeInsets.all(300) : EdgeInsets.zero,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                        hPadding, vPaddingTop, hPadding, vPaddingBottom),
+                    child: Stack(
+                      children: [
+                        // A. Visual Image Layer
+                        if (_localImage != null)
+                          Positioned.fill(
+                            child: Stack(children: [
                               Positioned.fill(
-                                child: Stack(
-                                  children: [
-                                    Positioned.fill(
-                                      child: RepaintBoundary(
-                                        child: Image.file(
-                                          _localImage!,
-                                          fit: BoxFit.contain,
-                                          filterQuality: FilterQuality.medium, // Optimized quality for swiping
-                                          cacheWidth: (MediaQuery.of(context).size.width * MediaQuery.of(context).devicePixelRatio).toInt(), // Cache to device size
-                                        ),
-                                      ),
-                                    ),
-                                    // 🎯 Interactivity Layer for Image mode
-                                    _buildImageInteractions(Size(boxConstraints.maxWidth - (hPadding * 2), boxConstraints.maxHeight - (vPadding * 2))),
-                                  ],
+                                child: RepaintBoundary(
+                                  child: Image.file(
+                                    _localImage!,
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.medium,
+                                    cacheWidth: (MediaQuery.of(context).size.width *
+                                            MediaQuery.of(context).devicePixelRatio)
+                                        .toInt(),
+                                  ),
                                 ),
                               ),
-                            
-                            // B. Interactive Layer (Visible if no image, Transparent if image exists)
-                            IgnorePointer(
-                              ignoring: _localImage != null && _ayahRects.isNotEmpty && !showDebugBoxes,
-                              child: Container(
-                                width: availableWidth,
-                                height: availableHeight,
-                                padding: EdgeInsets.zero,
-                                color: _localImage != null ? Colors.transparent : null,
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: List.generate(15, (index) {
-                                    int lineIdx = index + 1;
-                                    List<Map<String, dynamic>> lineWords = _processedLines[lineIdx] ?? [];
-                                    
-                                    final meta = _lineMetadata[lineIdx];
-                                    int? headerForSurah = meta?['surah'];
-                                    bool isBismillah = meta?['isBismillah'] ?? false;
-        
-                                    Widget lineWidget;
-                                    if (headerForSurah != null) {
-                                      lineWidget = _localImage != null 
-                                        ? const SizedBox.shrink() 
-                                        : _buildSurahHeader(QuranPageHelper.surahNames[headerForSurah - 1], lineHeight);
-                                    } else if (isBismillah) {
-                                      lineWidget = _localImage != null
-                                        ? const SizedBox.shrink()
-                                        : _buildBismillah(lineHeight);
-                                    } else {
-                                      lineWidget = _buildLine(lineWords, availableWidth, lineHeight, isLastLine: index == 14, isTransparent: _localImage != null);
-                                    }
-        
-                                    return SizedBox(
-                                      height: lineHeight,
-                                      child: lineWidget,
-                                    );
-                                  }),
-                                ),
-                              ),
+                              _buildImageInteractions(
+                                  Size(availableWidth, availableHeight)),
+                            ]),
+                          ),
+
+                        // B. Text + Interactive Layer
+                        IgnorePointer(
+                          ignoring: _localImage != null &&
+                              _ayahRects.isNotEmpty &&
+                              !showDebugBoxes,
+                          child: SizedBox(
+                            width: availableWidth,
+                            height: availableHeight,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: List.generate(15, (index) {
+                                int lineIdx = index + 1;
+                                List<Map<String, dynamic>> lineWords =
+                                    _processedLines[lineIdx] ?? [];
+                                final meta = _lineMetadata[lineIdx];
+                                int? headerForSurah = meta?['surah'];
+                                bool isBismillah = meta?['isBismillah'] ?? false;
+
+                                Widget lineWidget;
+                                if (headerForSurah != null) {
+                                  lineWidget = _localImage != null
+                                      ? const SizedBox.shrink()
+                                      : _buildSurahHeader(
+                                          QuranPageHelper.surahNames[headerForSurah - 1],
+                                          availableWidth,
+                                          lineHeight);
+                                } else if (isBismillah) {
+                                  lineWidget = _localImage != null
+                                      ? const SizedBox.shrink()
+                                      : _buildBismillah(availableWidth, lineHeight);
+                                } else {
+                                  lineWidget = _buildLine(
+                                    lineWords,
+                                    availableWidth,
+                                    lineHeight,
+                                    isLastLine: index == 14,
+                                    isTransparent: _localImage != null,
+                                  );
+                                }
+                                return SizedBox(height: lineHeight, child: lineWidget);
+                              }),
                             ),
-                          ],
+                          ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
 
-          // 3. Page Number Footer
+          // ③ Top Info Bar (اسم السورة / رقم الجزء)
           Positioned(
-            bottom: 25,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: _buildPageFooter(),
-            ),
-          ),
-
-          // 5. Ornate Frames & Marginalia 🎨 (Isolate from Page Rendering)
-          Positioned(
-            top: 35,
+            top: 14,
             left: 50,
             right: 50,
+            height: 38,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -387,56 +417,68 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
               ],
             ),
           ),
+
+          // ④ Page Number Footer
+          Positioned(
+            bottom: 12,
+            left: 0,
+            right: 0,
+            child: Center(child: _buildPageFooter()),
+          ),
         ],
       ),
     );
   }
 
+  // ─── Top Info (Surah name / Juz) ─────────────────────────────────────────
   Widget _buildTopInfo({required bool isLeft}) {
     final surahName = QuranPageHelper.getSurahNameForPage(widget.pageNumber);
     final juzNumber = QuranPageHelper.getJuzForPage(widget.pageNumber);
     final text = isLeft ? 'جزء $juzNumber' : surahName;
+    // UI info uses a fixed small size — only slightly scales with font pref
+    final double uiSize = _uiFontSize(12.0);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: _ornamentColor.withValues(alpha: 0.2)),
-        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _ornamentColor.withValues(alpha: 0.4), width: 1),
+        borderRadius: BorderRadius.circular(10),
+        color: _parchmentColor.withValues(alpha: 0.85),
       ),
       child: Text(
         text,
-        style: widget.fontFamily == ThemeService.fontAmiri
-          ? GoogleFonts.amiri(
-              fontSize: 14 * (widget.fontSize / 24.0),
-              fontWeight: FontWeight.bold,
-              color: _textColor.withValues(alpha: 0.7),
-            )
-          : TextStyle(
-              fontFamily: widget.fontFamily,
-              fontSize: 14 * (widget.fontSize / 24.0),
-              fontWeight: FontWeight.bold,
-              color: _textColor.withValues(alpha: 0.7),
-            ),
+        style: getArabicTextStyle(
+          fontFamily: widget.fontFamily,
+          fontSize: uiSize,
+          color: _textColor.withValues(alpha: 0.8),
+          fontWeight: FontWeight.bold,
+          height: 1.2,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.rtl,
       ),
     );
   }
 
-  Widget _buildSurahHeader(String name, double height) {
+  // ─── Surah Header ─────────────────────────────────────────────────────────
+  Widget _buildSurahHeader(String name, double availableWidth, double lineHeight) {
+    final double safeFontSize = min(availableWidth * 0.055, lineHeight * 0.72);
+    final double headerFontSize = min(safeFontSize * _fontScaleRatio, 44.0);
     return SizedBox(
-      width: double.infinity,
-      height: height, // Must fit exactly 1 line of the 15-line grid
+      width: availableWidth,
+      height: lineHeight,
       child: CustomPaint(
-        painter: _SurahHeaderPainter(
-          color: _ornamentColor,
-          edition: widget.edition,
-        ),
+        painter: _SurahHeaderPainter(color: _ornamentColor, edition: widget.edition),
         child: Center(
           child: Text(
-            "سُورَةُ $name",
-            style: GoogleFonts.amiri(
-              fontSize: min(height * 0.8, 38.0), // Increased for "Real Mushaf" fill
+            'سُورَةُ $name',
+            style: getArabicTextStyle(
+              fontFamily: widget.fontFamily,
+              fontSize: headerFontSize,
+              color: Colors.white,
               fontWeight: FontWeight.bold,
-              color: _textColor,
               height: 1.0,
             ),
             textAlign: TextAlign.center,
@@ -446,34 +488,41 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     );
   }
 
-  Widget _buildBismillah(double height) {
+  // ─── Bismillah ────────────────────────────────────────────────────────────
+  Widget _buildBismillah(double availableWidth, double lineHeight) {
+    final double safeFontSize = min(availableWidth * 0.055, lineHeight * 0.68);
+    final double bismFontSize = min(safeFontSize * _fontScaleRatio, 40.0);
     return Container(
-      height: height,
+      width: availableWidth,
+      height: lineHeight,
       alignment: Alignment.center,
       child: Text(
-        "بِسْمِ ٱللّٰهِ الرَّحْمٰنِ الرَّحِيمِ",
-        style: GoogleFonts.amiri(
-          fontSize: min(height * 0.75, 36.0), // Increased for "Real Mushaf" fill
-          fontWeight: FontWeight.w500,
+        'بِسْمِ ٱللّٰهِ الرَّحْمٰنِ الرَّحِيمِ',
+        style: getArabicTextStyle(
+          fontFamily: widget.fontFamily,
+          fontSize: bismFontSize,
           color: _textColor,
+          fontWeight: FontWeight.w600,
           height: 1.0,
         ),
       ),
     );
   }
 
+  // ─── Page Footer ──────────────────────────────────────────────────────────
   Widget _buildPageFooter() {
+    final double footerFontSize = _uiFontSize(13.0);
     return Stack(
       alignment: Alignment.center,
       children: [
         CustomPaint(
-          size: const Size(45, 45),
+          size: Size(footerFontSize * 3.2, footerFontSize * 3.2),
           painter: _FooterOrnamentPainter(color: _ornamentColor),
         ),
         Text(
-          "${widget.pageNumber}",
+          '${widget.pageNumber}',
           style: GoogleFonts.amiri(
-            fontSize: 14,
+            fontSize: footerFontSize,
             fontWeight: FontWeight.bold,
             color: _textColor,
           ),
@@ -482,25 +531,37 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     );
   }
 
-  Widget _buildLine(List<Map<String, dynamic>> words, double maxWidth, double lineHeight, {bool isLastLine = false, bool isTransparent = false}) {
+  // ─── Main Line Builder ────────────────────────────────────────────────────
+  Widget _buildLine(
+    List<Map<String, dynamic>> words,
+    double availableWidth,
+    double lineHeight, {
+    bool isLastLine = false,
+    bool isTransparent = false,
+  }) {
     if (words.isEmpty) return const SizedBox.shrink();
 
-    // Justification Logic: 
-    // Do NOT justify the very last line of a page/segment to keep it natural
     final bool shouldJustify = words.length > 2 && !isLastLine;
 
+    // ── Core Font Size Formula ──────────────────────────────────────────────
+    // To ensure uniform fonts, base the core size on available width so it rarely needs to shrink
+    final double safeSize = min(availableWidth * 0.054, lineHeight * 0.72);
+    final double coreFontSize =
+        (safeSize * _fontScaleRatio).clamp(lineHeight * 0.35, lineHeight * 0.85);
+
     return Container(
-      width: maxWidth, 
+      width: availableWidth,
       height: lineHeight,
       alignment: Alignment.center,
       child: FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.center,
         child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: shouldJustify ? maxWidth : 0),
+          constraints: BoxConstraints(minWidth: shouldJustify ? availableWidth : 0),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
+            mainAxisAlignment:
+                shouldJustify ? MainAxisAlignment.spaceBetween : MainAxisAlignment.center,
             textDirection: TextDirection.rtl,
             children: words.map((w) {
               final verseKey = w['verse_key'] as String;
@@ -508,94 +569,85 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
               final sNum = int.parse(parts[0]);
               final ayahNum = int.parse(parts[1]);
 
-              bool isHighlighted = widget.highlightedSurah == sNum && widget.highlightedAyah == ayahNum;
-              final bool isEnd = w['is_last_word'] == true || _isLastWordOfVerse(w, words);
+              bool isAyahActive = widget.highlightedSurah == sNum && widget.highlightedAyah == ayahNum;
+              bool isWordActive = widget.highlightedWordLocation != null && w['location'] == widget.highlightedWordLocation;
+              
+              // 🚀 If Audio is playing (WordLocation is not null), only highlight the exact word.
+              // Otherwise, highlight the entire selected Ayah.
+              bool isHighlighted = widget.highlightedWordLocation != null ? isWordActive : isAyahActive;
+              final bool isEnd =
+                  w['is_last_word'] == true || _isLastWordOfVerse(w, words);
 
-              // DETECT & REMOVE REPEATED AYAH END SYMBOLS FROM FONT
-              String cleanText = w['text_uthmani'] ?? "";
-              // Remove the character \u06DD (End of Ayah) if present in font data
-              // Also common to have \uFD3E \uFD3F (Ornate Parentheses) for numbers
-              cleanText = cleanText.replaceAll(RegExp(r'[\u06DD\uFD3E\uFD3F0-9\u0660-\u0669]'), '').trim();
+              String cleanText = w['text_uthmani'] ?? '';
+              cleanText = cleanText
+                  .replaceAll(RegExp(r'[\u06DD\uFD3E\uFD3F0-9\u0660-\u0669]'), '')
+                  .trim();
+
+              final Color wordColor =
+                  isTransparent ? Colors.transparent : _textColor;
+              final TextStyle wordStyle = getArabicTextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: coreFontSize,
+                color: wordColor,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              );
+              final TextStyle tajweedBaseStyle = getArabicTextStyle(
+                fontFamily: widget.fontFamily,
+                fontSize: coreFontSize,
+                color: wordColor,
+                fontWeight: FontWeight.w500,
+                height: 1.3,
+              );
 
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 textDirection: TextDirection.rtl,
                 children: [
                   GestureDetector(
-                    behavior: HitTestBehavior.opaque, // 🎯 Ensure it captures taps even if child is transparent
-                    onTap: () {
-                      if (widget.onAyahTapped != null) {
-                        widget.onAyahTapped!(sNum, ayahNum);
-                      }
-                    },
-                      child: AnimatedBuilder(
-                        animation: _auraController,
-                        builder: (context, child) {
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            padding: const EdgeInsets.symmetric(horizontal: 1),
-                            decoration: BoxDecoration(
-                              color: isHighlighted 
-                                ? AppColors.gold.withValues(alpha: 0.15 + (0.1 * _auraController.value)) 
-                                : Colors.transparent,
-                              borderRadius: BorderRadius.circular(4),
-                              boxShadow: isHighlighted ? [
-                                BoxShadow(
-                                  color: AppColors.gold.withValues(alpha: 0.1 * _auraController.value),
-                                  blurRadius: 8 * _auraController.value,
-                                  spreadRadius: 2,
-                                )
-                              ] : null,
-                            ),
-                            child: child,
-                          );
-                        },
-                        child: Opacity(
-                          opacity: (widget.isMemorizationMode && isHighlighted) ? 0.2 : 1.0,
-                          child: widget.showTajweed && w['text_tajweed'] != null
-                          ? RichText(
-                              textDirection: TextDirection.rtl,
-                              text: TextSpan(
-                                children: TajweedParser.parse(
-                                  w['text_tajweed']!,
-                                  widget.fontFamily == ThemeService.fontAmiri 
-                                    ? GoogleFonts.amiri(
-                                        fontSize: widget.fontSize * (lineHeight / 34), 
-                                        color: isTransparent ? Colors.transparent : _textColor,
-                                        fontWeight: FontWeight.w500,
-                                        height: 1.1,
-                                      )
-                                    : TextStyle(
-                                        fontFamily: widget.fontFamily,
-                                        fontSize: widget.fontSize * (lineHeight / 34),
-                                        color: isTransparent ? Colors.transparent : _textColor,
-                                        height: 1.1,
-                                      ),
-                                ),
-                              ),
-                            )
-                          : Text(
-                              cleanText,
-                              style: widget.fontFamily == ThemeService.fontAmiri 
-                                ? GoogleFonts.amiri(
-                                    fontSize: widget.fontSize * (lineHeight / 34), 
-                                    color: isTransparent ? Colors.transparent : _textColor,
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.1,
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => widget.onAyahTapped?.call(sNum, ayahNum),
+                    onLongPress: () => widget.onAyahLongPressed?.call(sNum, ayahNum),
+                    child: AnimatedBuilder(
+                      animation: _auraController,
+                      builder: (context, child) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.symmetric(horizontal: 1),
+                        decoration: BoxDecoration(
+                          color: isHighlighted
+                              ? AppColors.gold
+                                  .withValues(alpha: 0.15 + (0.08 * _auraController.value))
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: isHighlighted
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.gold
+                                        .withValues(alpha: 0.12 * _auraController.value),
+                                    blurRadius: 8 * _auraController.value,
+                                    spreadRadius: 1,
                                   )
-                                : TextStyle(
-                                    fontFamily: widget.fontFamily,
-                                    fontStyle: FontStyle.normal,
-                                    fontSize: widget.fontSize * (lineHeight / 34),
-                                    color: isTransparent ? Colors.transparent : _textColor,
-                                    height: 1.1,
-                                  ),
-                            ),
+                                ]
+                              : null,
+                        ),
+                        child: child,
+                      ),
+                      child: Opacity(
+                        opacity: (widget.isMemorizationMode && isHighlighted) ? 0.15 : 1.0,
+                        child: widget.showTajweed && w['text_tajweed'] != null
+                            ? RichText(
+                                textDirection: TextDirection.rtl,
+                                text: TextSpan(
+                                  children: TajweedParser.parse(
+                                      w['text_tajweed']!, tajweedBaseStyle),
+                                ),
+                              )
+                            : Text(cleanText, style: wordStyle),
                       ),
                     ),
                   ),
                   if (isEnd) ...[
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 3),
                     _buildAyahEndMark(ayahNum, lineHeight),
                   ],
                 ],
@@ -607,15 +659,12 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     );
   }
 
-  bool _isLastWordOfVerse(Map<String, dynamic> currentWord, List<Map<String, dynamic>> allLineWords) {
-    // 1. Check if the next word on the same line belongs to a different verse
+  bool _isLastWordOfVerse(
+      Map<String, dynamic> currentWord, List<Map<String, dynamic>> allLineWords) {
     final idx = allLineWords.indexOf(currentWord);
     if (idx < allLineWords.length - 1) {
-      final nextWord = allLineWords[idx + 1];
-      return currentWord['verse_key'] != nextWord['verse_key'];
+      return currentWord['verse_key'] != allLineWords[idx + 1]['verse_key'];
     }
-
-    // 2. If it's the last word on the line, check if it's the last word of its verse in _pageData
     for (var verse in _pageData) {
       if (verse['verse_key'] == currentWord['verse_key']) {
         final words = verse['words'] as List<dynamic>? ?? [];
@@ -624,12 +673,16 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
         }
       }
     }
-    
     return false;
   }
 
+  // ─── Ayah End Mark ────────────────────────────────────────────────────────
+  // Size scales with the font, clamped to stay proportional.
   Widget _buildAyahEndMark(int number, double lineHeight) {
-    final double markSize = min(lineHeight * 0.6, 32.0);
+    final double markSize =
+        (lineHeight * 0.75 * _fontScaleRatio).clamp(lineHeight * 0.45, lineHeight * 0.90);
+    final double numFontSize = (markSize * 0.45).clamp(8.0, 26.0);
+
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -638,9 +691,9 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
           painter: _AyahEndPainter(color: _ornamentColor),
         ),
         Text(
-          "$number",
+          '$number',
           style: GoogleFonts.amiri(
-            fontSize: markSize * 0.45,
+            fontSize: numFontSize,
             fontWeight: FontWeight.bold,
             color: _textColor,
           ),
@@ -649,18 +702,12 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
     );
   }
 
-  /// 📐 الإحداثيات الذكية — Smart Coordinate Mapping
+  // ─── Image Interactions ───────────────────────────────────────────────────
   Widget _buildImageInteractions(Size viewSize) {
     if (_ayahRects.isEmpty) return const SizedBox.shrink();
-
-    // Design size of the KFGQPC coordinates (Typical 1100x1570 or 1260x1800)
-    // We assume 1100x1570 for these DBs, but let's make it detectable or standard
-    const Size designSize = Size(1100, 1570); 
-
-    // Calculate actual image rect within the BoxFit.contain view
+    const Size designSize = Size(1100, 1570);
     double viewAspectRatio = viewSize.width / viewSize.height;
     double designAspectRatio = designSize.width / designSize.height;
-
     double actualWidth, actualHeight, offsetX, offsetY;
     if (viewAspectRatio > designAspectRatio) {
       actualHeight = viewSize.height;
@@ -673,21 +720,18 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
       offsetY = (viewSize.height - actualHeight) / 2;
       offsetX = 0;
     }
-
     final double scaleX = actualWidth / designSize.width;
     final double scaleY = actualHeight / designSize.height;
 
     return Stack(
       children: _ayahRects.entries.map((entry) {
-        final key = entry.key; // "surah:ayah"
+        final key = entry.key;
         final rects = entry.value;
         final parts = key.split(':');
         final sNum = int.parse(parts[0]);
         final aNum = int.parse(parts[1]);
-
         bool isHighlighted = widget.highlightedSurah == sNum && widget.highlightedAyah == aNum;
 
-        // 🎯 Word-by-Word data logic
         final List<dynamic> verseWords = _pageData.firstWhere(
           (v) => v['verse_key'] == key,
           orElse: () => {'words': []},
@@ -695,19 +739,14 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
 
         return Stack(
           children: rects.map((r) {
-            // Find if this specific glyph/rect belongs to a word or end mark
             final int glyphIdx = rects.indexOf(r);
             String? glyphLocation;
-            
-            // Heuristic: mapping glyphs to words (simplified for now)
             if (glyphIdx < verseWords.length) {
               glyphLocation = verseWords[glyphIdx]['location'];
             }
+            bool isWordHighlighted = widget.highlightedWordLocation != null &&
+                glyphLocation == widget.highlightedWordLocation;
 
-            bool isWordHighlighted = widget.highlightedWordLocation != null && 
-                                   glyphLocation == widget.highlightedWordLocation;
-
-            // Apply scale and offset to the design rect
             final scaledRect = Rect.fromLTRB(
               offsetX + (r.left * scaleX),
               offsetY + (r.top * scaleY),
@@ -719,25 +758,31 @@ class _MushafPageRendererState extends State<MushafPageRenderer> with TickerProv
               rect: scaledRect,
               child: GestureDetector(
                 onTap: () => widget.onAyahTapped?.call(sNum, aNum),
+                onLongPress: () => widget.onAyahLongPressed?.call(sNum, aNum),
                 behavior: HitTestBehavior.opaque,
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150), // FASTER for words
+                  duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    color: showDebugBoxes 
+                    color: showDebugBoxes
                         ? Colors.redAccent.withValues(alpha: 0.3)
                         : (isWordHighlighted
-                        ? AppColors.gold.withValues(alpha: 0.45) // DARKER for specific word
-                        : (isHighlighted ? AppColors.gold.withValues(alpha: 0.2) : Colors.transparent)),
+                            ? AppColors.gold.withValues(alpha: 0.45)
+                            : (isHighlighted
+                                ? AppColors.gold.withValues(alpha: 0.22)
+                                : Colors.transparent)),
                     borderRadius: BorderRadius.circular(2),
-                    border: showDebugBoxes ? Border.all(color: Colors.red, width: 1.0) : null,
-                    // ✨ Premium Glow Effect (Phase 112)
-                    boxShadow: isHighlighted ? [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.15),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      )
-                    ] : null,
+                    border: showDebugBoxes
+                        ? Border.all(color: Colors.red, width: 1.0)
+                        : null,
+                    boxShadow: isHighlighted
+                        ? [
+                            BoxShadow(
+                              color: AppColors.gold.withValues(alpha: 0.15),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            )
+                          ]
+                        : null,
                   ),
                 ),
               ),
@@ -762,78 +807,78 @@ class _PageFramePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final bool is1422 = edition == ThemeService.editionMadina1422;
     final bool isWarsh = edition == ThemeService.editionWarsh;
-
-    const double p = 14.0; 
+    const double p = 14.0;
     const double p2 = 22.0;
 
-    // 1. Shadow Layer for Depth
     final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0)
+      ..color = Colors.black.withValues(alpha: 0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
-    
     final mainRect = Rect.fromLTRB(p, p, size.width - p, size.height - p);
-    canvas.drawRRect(RRect.fromRectAndRadius(mainRect, const Radius.circular(4)), shadowPaint);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(mainRect, const Radius.circular(4)), shadowPaint);
 
-    // 2. Main Golden Frame
     final framePaint = Paint()
       ..shader = LinearGradient(
-        colors: [color, color.withValues(alpha: 0.8), color, color.withValues(alpha: 1.2)],
+        colors: [color, color.withValues(alpha: 0.8), color],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ).createShader(mainRect)
       ..style = PaintingStyle.stroke
       ..strokeWidth = is1422 ? 3.5 : 2.5;
-
     canvas.drawRect(mainRect, framePaint);
-    
-    // Inner Decorative Line
+
     final innerPaint = Paint()
       ..color = color.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.8;
-    canvas.drawRect(Rect.fromLTRB(p2, p2, size.width - p2, size.height - p2), innerPaint);
+    canvas.drawRect(
+        Rect.fromLTRB(p2, p2, size.width - p2, size.height - p2), innerPaint);
 
-    // 3. Intricate Corners (Premium Style)
     final accentPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = is1422 ? 4.0 : 3.0;
-
     final cornerSize = isWarsh ? 70.0 : 55.0;
-    
-    _drawPremiumCorner(canvas, const Offset(p, p), cornerSize, accentPaint, isTop: true, isLeft: true);
-    _drawPremiumCorner(canvas, Offset(size.width - p, p), cornerSize, accentPaint, isTop: true, isLeft: false);
-    _drawPremiumCorner(canvas, Offset(p, size.height - p), cornerSize, accentPaint, isTop: false, isLeft: true);
-    _drawPremiumCorner(canvas, Offset(size.width - p, size.height - p), cornerSize, accentPaint, isTop: false, isLeft: false);
+    _drawPremiumCorner(canvas, const Offset(p, p), cornerSize, accentPaint,
+        isTop: true, isLeft: true);
+    _drawPremiumCorner(canvas, Offset(size.width - p, p), cornerSize, accentPaint,
+        isTop: true, isLeft: false);
+    _drawPremiumCorner(canvas, Offset(p, size.height - p), cornerSize, accentPaint,
+        isTop: false, isLeft: true);
+    _drawPremiumCorner(canvas, Offset(size.width - p, size.height - p), cornerSize,
+        accentPaint, isTop: false, isLeft: false);
   }
 
-  void _drawPremiumCorner(Canvas canvas, Offset origin, double size, Paint paint, {required bool isTop, required bool isLeft}) {
+  void _drawPremiumCorner(Canvas canvas, Offset origin, double size, Paint paint,
+      {required bool isTop, required bool isLeft}) {
     final double sx = isLeft ? 1 : -1;
     final double sy = isTop ? 1 : -1;
-    
-    // Floral Flourish Path
     final path = Path()
       ..moveTo(origin.dx, origin.dy + size * sy)
       ..quadraticBezierTo(origin.dx, origin.dy, origin.dx + size * sx, origin.dy);
-    
-    // Add "Floral Petal" for 1405/1422
-    if (edition != ThemeService.editionWarsh) {
+    if (edition == ThemeService.editionMadina1405 ||
+        edition == ThemeService.editionMadina1422) {
       path.moveTo(origin.dx + (size * 0.3 * sx), origin.dy);
-      path.quadraticBezierTo(origin.dx + (size * 0.5 * sx), origin.dy + (size * 0.2 * sy), origin.dx + (size * 0.3 * sx), origin.dy + (size * 0.4 * sy));
-      path.quadraticBezierTo(origin.dx + (size * 0.1 * sx), origin.dy + (size * 0.2 * sy), origin.dx + (size * 0.3 * sx), origin.dy);
+      path.quadraticBezierTo(
+          origin.dx + (size * 0.5 * sx),
+          origin.dy + (size * 0.2 * sy),
+          origin.dx + (size * 0.3 * sx),
+          origin.dy + (size * 0.4 * sy));
+      path.quadraticBezierTo(
+          origin.dx + (size * 0.1 * sx),
+          origin.dy + (size * 0.2 * sy),
+          origin.dx + (size * 0.3 * sx),
+          origin.dy);
     }
-      
     canvas.drawPath(path, paint);
-
-    // Ornament Motifs
     if (edition == ThemeService.editionMadina1422) {
       _draw8PointStar(canvas, origin, paint);
     } else {
-      // Moroccan Warsh or 1405 Diamond
       final dPaint = Paint()..color = color..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(origin.dx + (8 * sx), origin.dy + (8 * sy)), 4, dPaint);
+      canvas.drawCircle(
+          Offset(origin.dx + (8 * sx), origin.dy + (8 * sy)), 4, dPaint);
     }
   }
 
@@ -841,44 +886,43 @@ class _PageFramePainter extends CustomPainter {
     final path = Path();
     const double radius = 12.0;
     for (int i = 0; i < 8; i++) {
-       final double angle = (i * 45) * pi / 180;
-       final double r = i.isEven ? radius : radius * 0.5;
-       final x = center.dx + r * cos(angle);
-       final y = center.dy + r * sin(angle);
-       if (i == 0) {
-         path.moveTo(x, y);
-       } else {
-         path.lineTo(x, y);
-       }
+      final double angle = (i * 45) * pi / 180;
+      final double r = i.isEven ? radius : radius * 0.5;
+      final x = center.dx + r * cos(angle);
+      final y = center.dy + r * sin(angle);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
     }
     path.close();
     canvas.drawPath(path, paint..style = PaintingStyle.fill);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _PageFramePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.edition != edition;
 }
 
 class _SurahHeaderPainter extends CustomPainter {
-  final Color color; // Theme Gold/Green
+  final Color color;
   final String edition;
   _SurahHeaderPainter({required this.color, required this.edition});
 
   @override
   void paint(Canvas canvas, Size size) {
     final bool is1422 = edition == ThemeService.editionMadina1422;
-    
     final framePaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+      ..strokeWidth = 2.5;
 
-    // Premium "Plate" Background (Madina Blue/Cyan tone for headers)
     final bgPaint = Paint()
       ..shader = LinearGradient(
         colors: [
-          is1422 ? const Color(0xFF0D47A1) : const Color(0xFF00695C), 
-          is1422 ? const Color(0xFF1976D2) : const Color(0xFF00897B)
+          is1422 ? const Color(0xFF0D47A1) : const Color(0xFF00695C),
+          is1422 ? const Color(0xFF1976D2) : const Color(0xFF00897B),
         ],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
@@ -887,32 +931,23 @@ class _SurahHeaderPainter extends CustomPainter {
 
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
-    
-    // 1. Draw Plate
     canvas.drawRRect(rrect, bgPaint);
     canvas.drawRRect(rrect, framePaint);
-    
-    // 2. Draw Side "Wings" (The characteristic Mushaf header ears)
-    final wingPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-      
+
+    final wingPaint = Paint()..color = color..style = PaintingStyle.fill;
     final wingPath = Path();
-    // Left Wing
     wingPath.moveTo(0, size.height * 0.2);
-    wingPath.quadraticBezierTo(-20, size.height/2, 0, size.height * 0.8);
-    // Right Wing
+    wingPath.quadraticBezierTo(-18, size.height / 2, 0, size.height * 0.8);
     wingPath.moveTo(size.width, size.height * 0.2);
-    wingPath.quadraticBezierTo(size.width + 20, size.height/2, size.width, size.height * 0.8);
-    
+    wingPath.quadraticBezierTo(size.width + 18, size.height / 2, size.width, size.height * 0.8);
     canvas.drawPath(wingPath, wingPaint);
-    
-    // 3. Inner Gold Borders
+
     canvas.drawRRect(rrect.deflate(4), framePaint..strokeWidth = 0.8);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _SurahHeaderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.edition != edition;
 }
 
 class _AyahEndPainter extends CustomPainter {
@@ -924,16 +959,14 @@ class _AyahEndPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-      
-    final center = Offset(size.width/2, size.height/2);
+      ..strokeWidth = 1.6;
+    final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2.1;
 
-    // Geometric Star
     final path = Path();
     for (int i = 0; i < 16; i++) {
       double angle = (i * 22.5) * pi / 180;
-      double r = (i.isEven) ? radius : radius * 0.7;
+      double r = i.isEven ? radius : radius * 0.7;
       if (i == 0) {
         path.moveTo(center.dx + r * cos(angle), center.dy + r * sin(angle));
       } else {
@@ -941,17 +974,15 @@ class _AyahEndPainter extends CustomPainter {
       }
     }
     path.close();
-    
-    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.1)..style = PaintingStyle.fill);
+    canvas.drawPath(
+        path, Paint()..color = color.withValues(alpha: 0.12)..style = PaintingStyle.fill);
     canvas.drawPath(path, paint);
-    
-    // Double circle for number
     canvas.drawCircle(center, radius * 0.6, paint..strokeWidth = 1.0);
     canvas.drawCircle(center, radius * 0.45, paint..strokeWidth = 0.5);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _AyahEndPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _FooterOrnamentPainter extends CustomPainter {
@@ -963,34 +994,36 @@ class _FooterOrnamentPainter extends CustomPainter {
     final mainPaint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 2.0;
 
     final center = Offset(size.width / 2, size.height / 2);
-    
-    // Islamic Medallion Shape
     final path = Path();
     const int petals = 32;
     for (int i = 0; i < petals; i++) {
-       double angle = (i * 360 / petals) * pi / 180;
-       double r = (i % 2 == 0) ? size.width/2.2 : size.width/2.4;
-       if (i == 0) {
-         path.moveTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
-       } else {
-         path.lineTo(center.dx + r*cos(angle), center.dy + r*sin(angle));
-       }
+      double angle = (i * 360 / petals) * pi / 180;
+      double r = (i % 2 == 0) ? size.width / 2.2 : size.width / 2.5;
+      if (i == 0) {
+        path.moveTo(center.dx + r * cos(angle), center.dy + r * sin(angle));
+      } else {
+        path.lineTo(center.dx + r * cos(angle), center.dy + r * sin(angle));
+      }
     }
     path.close();
-    
     canvas.drawPath(path, mainPaint);
-    canvas.drawCircle(center, size.width/2.6, mainPaint..strokeWidth = 1.0);
-    
-    // Dots
+    canvas.drawCircle(center, size.width / 2.7, mainPaint..strokeWidth = 0.8);
+
     for (int i = 0; i < 8; i++) {
       double angle = (i * 45) * pi / 180;
-      canvas.drawCircle(Offset(center.dx + (size.width/2) * cos(angle), center.dy + (size.width/2) * sin(angle)), 1.5, Paint()..color = color..style = PaintingStyle.fill);
+      canvas.drawCircle(
+        Offset(center.dx + (size.width / 2) * cos(angle),
+            center.dy + (size.width / 2) * sin(angle)),
+        1.5,
+        Paint()..color = color..style = PaintingStyle.fill,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _FooterOrnamentPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

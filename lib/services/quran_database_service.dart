@@ -543,6 +543,27 @@ class QuranDatabaseService {
     }
   }
 
+  /// جلب كل نصوص التفسير لسورة معينة من SQLite
+  Future<List<Map<String, dynamic>>> getSurahTafseer(int surah, String identifier) async {
+    await _ensureDb();
+    try {
+      final res = await _database!.rawQuery('''
+        SELECT t.verse_key, t.text FROM tafseers t
+        JOIN resources r ON t.resource_id = r.id
+        WHERE r.identifier = ? AND t.verse_key LIKE ?
+        ORDER BY t.id ASC
+      ''', [identifier, '$surah:%']);
+      
+      return res.map((r) => {
+        'verse_key': r['verse_key'],
+        'text': r['text'],
+        'aya': (r['verse_key'] as String).split(':').last,
+      }).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
   /// إضافة أو تحديث وصف المصدر
   Future<int> upsertResource(Map<String, dynamic> resource) async {
     await _ensureDb();

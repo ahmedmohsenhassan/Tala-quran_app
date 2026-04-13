@@ -9,6 +9,10 @@ import 'mushaf_viewer_screen.dart';
 import 'stats_screen.dart';
 import 'juz_hizb_screen.dart';
 
+import '../services/notification_service.dart';
+import '../widgets/notification_permission_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 class MainNavScreen extends StatefulWidget {
   final int initialPage;
   const MainNavScreen({super.key, this.initialPage = 1});
@@ -33,6 +37,32 @@ class _MainNavScreenState extends State<MainNavScreen> {
       const StatsScreen(),
       const BookmarksScreen(),
     ];
+
+    // 🔔 Request notification permissions in the foreground
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final status = await NotificationService.checkAndRequestPermissions();
+      
+      // Show guidance if basic notifications OR exact alarms (Android 12+) are missing.
+      if (status['notifications'] == false || status['exact'] == false) {
+        final prefs = await SharedPreferences.getInstance();
+        final lastPrompt = prefs.getInt('last_notif_prompt') ?? 0;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
+        // Show once every 3 days if not granted (more frequent for critical fix)
+        if (now - lastPrompt > 3 * 24 * 60 * 60 * 1000) {
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (context) => NotificationPermissionDialog(
+                isNotificationsEnabled: status['notifications'] ?? true,
+                isExactAlarmEnabled: status['exact'] ?? true,
+              ),
+            );
+            await prefs.setInt('last_notif_prompt', now);
+          }
+        }
+      }
+    });
   }
 
   @override
