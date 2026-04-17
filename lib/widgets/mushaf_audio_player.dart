@@ -7,6 +7,7 @@ import '../models/reciter_model.dart';
 import '../utils/quran_page_helper.dart';
 import '../services/recitation_sync_service.dart'; // 🎙️ New for Phase 64
 import '../services/quran_text_service.dart';
+import '../services/quran_database_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/theme_service.dart';
@@ -58,17 +59,22 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
 
   // Stream Subscriptions
   StreamSubscription? _ayahPlaybackSub;
+  StreamSubscription? _positionSub; // 🎯 New for continuous word sync
   
   // Word sync data
   final RecitationSyncService _syncService = RecitationSyncService();
+  final QuranDatabaseService _quranDb = QuranDatabaseService(); // 🚀 Declared to fix undefined error
   List<Map<String, dynamic>> _currentAyahSegments = [];
   bool _isPageTurnTriggered = false;
+  bool _isInitializing = false; // 🛑 Guard against redundant initializations
+  int? _lastInitializedPage; // 🔒 Track exact page being initialized
 
   // 📖 Repetition State
   int _currentAyahIteration = 1;
   int _ayahRepeatCount = 1;
   int _currentRangeIteration = 1;
   int _rangeRepeatCount = 1;
+  bool _isAppending = false; // 🚀 New: Prevent double appends
 
   Color get _deepGreen {
     switch (widget.theme) {
@@ -110,8 +116,9 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
           // 🎯 Clear old segments before fetching new ones so we don't accidentally use wrong timings!
           _currentAyahSegments = [];
           
-          // 🎯 Fetch timestamps for the new Ayah
-          _syncService.getVerseTimestamps(7, '$_currentSurah:$_currentAyah').then((segments) {
+          // 🎯 Fetch timestamps for the new Ayah using the correct Reciter ID
+          final qId = _selectedReciter?.quranComId ?? 7; // Fallback to Alafasy if unknown
+          _syncService.getVerseTimestamps(qId, '$_currentSurah:$_currentAyah').then((segments) {
              if (mounted) setState(() => _currentAyahSegments = segments);
           });
           
@@ -130,9 +137,22 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
         return; // Don't process further until new page loads
       }
 
-      // Handle Word Synchronization
-      if (state.isPlaying) {
-        _syncWords(state.position);
+      // 🔄 Infinite Chaining: If we are near the end of the current loaded surah, append the next one
+      if (!_isAppending && _pageVerses.isNotEmpty) {
+        final int currentIdxInSequence = _pageVerses.indexWhere((v) => 
+          v['surah'] == _currentSurah && v['ayah'] == _currentAyah
+        );
+        
+        if (currentIdxInSequence != -1 && currentIdxInSequence >= _pageVerses.length - 5) {
+          _fetchAndAppendNextSurah();
+        }
+      }
+    });
+
+    // 🎯 Continuous Word Synchronization Listener
+    _positionSub = _audioService.positionStream.listen((pos) {
+      if (mounted && _isPlaying) {
+        _syncWords(pos);
       }
     });
 
@@ -155,8 +175,10 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
     super.didUpdateWidget(oldWidget);
     
     if (oldWidget.pageNumber != widget.pageNumber) {
+      _audioService.clearSequenceStatus(); // 🧹 INSTANT RESET: Synchronously prevent double-page turns
       debugPrint('📄 [MushafAudioPlayer] UI Page Moved: ${oldWidget.pageNumber} -> ${widget.pageNumber}');
-      _isPageTurnTriggered = false; // 🔄 Reset the one-off trigger for the new page
+      _currentAyahSegments = []; // 🧹 Clear old segments immediately
+      _pageVerses = []; // 🧹 Clear old verses immediately to prevent stale restarts
       
       // 🚀 IF it was an auto-advance (seamless transition), skip _initPlayer
       // BUT if it was a manual swipe, we MUST restart to synchronize.
@@ -165,7 +187,8 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
       
       if (widget.autoPlayContinues && isAlreadyOnNewPage && _audioService.isPlaying) {
         debugPrint('🚀 [MushafAudioPlayer] Seamless transition. Maintaining current flow.');
-        _loadPageData(); // Just refresh background verses
+        _isPageTurnTriggered = false; 
+        _loadInitialSequence(_currentSurah); // Refresh current surah buffer
         return;
       }
 
@@ -189,78 +212,106 @@ class _MushafAudioPlayerState extends State<MushafAudioPlayer> {
   @override
   void dispose() {
     _ayahPlaybackSub?.cancel();
+    _positionSub?.cancel(); // 🎯 Clean up
     super.dispose();
   }
 
-  Future<void> _loadPageData() async {
-    final List<Map<String, int>> verses = [];
-    final Set<String> uniqueVerses = {};
+  Future<List<Map<String, int>>> _loadInitialSequence(int surah) async {
+    // 🌍 Load only the current Surah to start with. 
+    // This is much lighter than loading 6236 verses at once.
+    final verses = await _quranDb.getVersesBySurah(surah);
+    final mapped = verses.map((v) => {
+      'surah': v['surah'] as int,
+      'ayah': v['ayah'] as int,
+    }).toList();
+    
+    if (mounted) setState(() => _pageVerses = mapped);
+    return mapped;
+  }
 
-    // 🎯 Load ONLY the current page's verses INSTANTLY and OFFLINE
-    final pageVersesData = await QuranTextService().getVersesByPage(widget.pageNumber);
-    for (var verse in pageVersesData) {
-      final vKey = verse['verse_key'] as String;
-      final parts = vKey.split(':');
-      final sNum = int.parse(parts[0]);
-      final ayahNum = int.parse(parts[1]);
-      
-      final key = '$sNum:$ayahNum';
-      if (!uniqueVerses.contains(key)) {
-        uniqueVerses.add(key);
-        verses.add({'surah': sNum, 'ayah': ayahNum});
+  Future<void> _fetchAndAppendNextSurah() async {
+    if (_isAppending) return;
+    _isAppending = true;
+    
+    try {
+      final lastVerse = _pageVerses.last;
+      int nextSurah = lastVerse['surah']! + 1;
+      if (nextSurah > 114) nextSurah = 1; // 🔄 Loop back to Fatiha
+
+      debugPrint('➕ [MushafAudioPlayer] Proactively fetching next surah: $nextSurah');
+      final verses = await _quranDb.getVersesBySurah(nextSurah);
+      final mapped = verses.map((v) => {
+        'surah': v['surah'] as int,
+        'ayah': v['ayah'] as int,
+      }).toList();
+
+      await _audioService.appendVerses(
+        verses: mapped,
+        reciter: _selectedReciter!,
+      );
+
+      if (mounted) {
+        setState(() {
+          _pageVerses.addAll(mapped);
+          _isAppending = false;
+        });
       }
+    } catch (e) {
+      debugPrint('⚠️ [MushafAudioPlayer] Append failed: $e');
+      _isAppending = false;
     }
-
-    if (mounted) setState(() => _pageVerses = verses);
   }
 
   Future<void> _initPlayer({bool playAfterLoad = false}) async {
+    final targetPage = widget.pageNumber;
+    if (_isInitializing && _lastInitializedPage == targetPage) return; // 🛑 Locked for this page
+    
+    _isInitializing = true;
+    _lastInitializedPage = targetPage;
+
     final prefs = await SharedPreferences.getInstance();
     final reciterId = widget.autoPlayReciter ?? (prefs.getString('selected_reciter_id') ?? 'al_afasy');
     
-    await _loadPageData();
+    // 🎯 Determine the starting Surah
+    final int targetSurah = widget.initialSurah ?? QuranPageHelper.getSurahForPage(targetPage);
+    final int targetAyah = widget.initialAyah ?? 1;
 
-    if (mounted) {
+    // 🌍 Load only the STARTING Surah sequence initially
+    final initialVerses = await _loadInitialSequence(targetSurah);
+
+    if (mounted && targetPage == widget.pageNumber) {
       _selectedReciter = Reciter.defaultReciters.firstWhere((r) => r.id == reciterId);
       
-      if (_pageVerses.isNotEmpty) {
-        int startIdx = 0;
-        if (widget.initialAyah != null) {
-          // 🎯 Search for the PRECISE Ayah+Surah combination for absolute accuracy
-          final idx = _pageVerses.indexWhere((v) => 
-            v['ayah'] == widget.initialAyah && 
-            (widget.initialSurah == null || v['surah'] == widget.initialSurah)
-          );
-          
-          if (idx != -1) {
-            startIdx = idx;
-          } else {
-            // Fallback: search by ayah only if surah doesn't match (should rarely happen on same page)
-            final fallbackIdx = _pageVerses.indexWhere((v) => v['ayah'] == widget.initialAyah);
-            startIdx = fallbackIdx != -1 ? fallbackIdx : 0;
-          }
-        } else if (widget.autoPlayContinues) {
-          // 🚀 Seamless page transition from the AudioService's current state
-          final currentState = _audioService.lastEmittedState;
-          if (currentState != null && currentState.page == widget.pageNumber) {
-            final idx = _pageVerses.indexWhere((v) => 
-              v['surah'] == currentState.surah && v['ayah'] == currentState.ayah
+      if (initialVerses.isNotEmpty) {
+        int startIdx = initialVerses.indexWhere((v) => 
+          v['surah'] == targetSurah && v['ayah'] == targetAyah
+        );
+
+        // Fallback to the first ayah of the target page
+        if (startIdx == -1) {
+          final pageVerses = await QuranTextService().getVersesByPage(targetPage);
+          if (pageVerses.isNotEmpty) {
+            final firstOnPage = pageVerses.first;
+            startIdx = initialVerses.indexWhere((v) => 
+              v['surah'] == firstOnPage['surah'] && v['ayah'] == firstOnPage['ayah']
             );
-            startIdx = idx != -1 ? idx : 0;
-          } else {
-            startIdx = 0;
           }
         }
 
-        debugPrint('🔄 Dynamic Sequence Init: Page ${widget.pageNumber} (Play: $playAfterLoad)');
+        if (startIdx == -1) startIdx = 0; // Absolute fallback
+
+        debugPrint('🔄 Dynamic Surah Sequence Init: StartIdx $startIdx (Play: $playAfterLoad)');
         await _audioService.startAyahSequence(
-          verses: _pageVerses,
+          verses: initialVerses,
           startIndex: startIdx,
           reciter: _selectedReciter!,
-          playImmediately: playAfterLoad, // 🎯 Use the new flag
+          playImmediately: playAfterLoad,
         );
       }
     }
+    
+    _isPageTurnTriggered = false;
+    _isInitializing = false; 
   }
 
   @override

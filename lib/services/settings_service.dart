@@ -155,4 +155,18 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_selectedReciterIdKey, reciterId);
   }
+
+  /// الحصول على كافة إعدادات المصحف — Get all mushaf settings
+  static Future<Map<String, dynamic>> getMushafSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'theme': prefs.getString('app_mushaf_theme') ?? 'classic',
+      'fontSize': prefs.getDouble('app_quran_font_size') ?? 24.0,
+      'font': prefs.getString('app_theme_font') ?? 'Amiri',
+      'edition': prefs.getString('app_mushaf_edition') ?? 'madina_1405',
+      'showTajweed': prefs.getBool('settings_show_tajweed') ?? false,
+      'readingMethod': (prefs.getInt('settings_reading_method') ?? 0) == 0 ? 'pages' : 'scroll',
+      'showPageSlider': prefs.getBool('settings_show_page_slider') ?? false,
+    };
+  }
 }

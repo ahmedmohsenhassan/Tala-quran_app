@@ -13,6 +13,7 @@ class Reciter {
   
   final String? firebasePath; // 🚀 Path in Firebase Storage
   final bool preferFirebase;  // 🛡️ Whether to favor Firebase over public links
+  final int? quranComId;      // 🎯 ID for Quran.com API (for word-by-word sync)
 
   const Reciter({
     required this.id,
@@ -25,6 +26,7 @@ class Reciter {
     this.qiraah = "حفص",
     this.firebasePath,
     this.preferFirebase = false,
+    this.quranComId,
   });
 
   // قائمة القراء الافتراضية - Default reciters list
@@ -39,6 +41,7 @@ class Reciter {
           identifier: 'ar.alafasy',
           serverUrl: 'https://server8.mp3quran.net/afs/',
           firebasePath: 'reciters/alafasy', // 🌅 Standard fallback
+          quranComId: 7,
         ),
         const Reciter(
           id: 'al_husary_hafs',
@@ -50,6 +53,7 @@ class Reciter {
           identifier: 'ar.husary',
           serverUrl: 'https://server13.mp3quran.net/husr/',
           qiraah: 'حفص',
+          quranComId: 6,
         ),
         const Reciter(
           id: 'al_husary_warsh',
@@ -86,6 +90,7 @@ class Reciter {
           serverUrl: 'https://server10.mp3quran.net/minsh/',
           firebasePath: 'reciters/minshawi',
           preferFirebase: true, // 🛡️ Smart Priority: Favor Firebase for stability
+          quranComId: 1, // Mujawwad commonly has highlights
         ),
         const Reciter(
           id: 'al_ghamdi',
@@ -96,6 +101,7 @@ class Reciter {
           baseUrl: 'https://everyayah.com/data/Ghamadi_40kbps/',
           identifier: 'ar.ghamadi',
           serverUrl: 'https://server7.mp3quran.net/s_gmd/',
+          quranComId: 3,
         ),
       ];
 }

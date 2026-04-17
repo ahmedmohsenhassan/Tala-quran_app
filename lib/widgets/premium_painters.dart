@@ -103,3 +103,102 @@ class PremiumPainters {
     }
   }
 }
+
+/// 🎨 Arabesque Pattern Painter — زينة الخلفيات الإسلامية
+class ArabesquePatternPainter extends CustomPainter {
+  final Color color;
+  ArabesquePatternPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (double i = 0; i < size.width; i += 50) {
+      for (double j = 0; j < size.height; j += 50) {
+        final center = Offset(i, j);
+        PremiumPainters.drawIslamicStar(
+            canvas: canvas,
+            center: center,
+            radius: 15,
+            color: color,
+            filled: false);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+/// 🏅 Juz Progress Ring Painter — رسام حلقة التقدم للأجزاء
+class JuzProgressPainter extends CustomPainter {
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+
+  JuzProgressPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 6;
+    const startAngle = -math.pi / 2; // Start from top
+    const sweepTotal = 2 * math.pi * 0.75; // 270° sweep
+
+    // Track
+    final trackPaint = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal,
+      false,
+      trackPaint,
+    );
+
+    // Progress arc
+    final progressPaint = Paint()
+      ..color = progressColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      sweepTotal * progress,
+      false,
+      progressPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(JuzProgressPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
+/// 🖼️ Premium Card Frame Painter
+class CardFramePainter extends CustomPainter {
+  final Color color;
+  CardFramePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    PremiumPainters.drawFloralFrame(
+      canvas: canvas,
+      rect: Offset.zero & size,
+      color: color,
+      edition: ThemeService.editionMadina1422,
+      hasShadow: false,
+    );
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) => false;
+}

@@ -75,27 +75,42 @@ class NotificationService {
     await refreshVerseDb();
   }
 
-  /// طلب صلاحيات الإشعارات — Request notification permissions
-  static Future<Map<String, bool>> checkAndRequestPermissions() async {
-    // 1. استخدام permission_handler للطلب والحصول على الحالة بشكل أدق
+  /// فحص حالة المنظومة بالكامل — Comprehensive health check of the notification system
+  static Future<Map<String, bool>> getNotificationHealth() async {
     final status = await Permission.notification.status;
-    bool notifGranted = status.isGranted;
-
-    if (status.isDenied) {
-      notifGranted = await Permission.notification.request().isGranted;
-    }
-
-    // 2. التحقق من المنبهات الدقيقة (Android 12+) عبر Plugin
+    
+    // Check exact alarm (Android 12+)
     final androidPlugin = _notifPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    
     final bool canScheduleExact = await androidPlugin?.canScheduleExactNotifications() ?? false;
     
+    // Check battery optimization
+    final bool isBatteryIgnored = await Permission.ignoreBatteryOptimizations.isGranted;
+
     return {
-      'notifications': notifGranted,
-      'exact': canScheduleExact,
-      'permanentlyDenied': status.isPermanentlyDenied,
+      'system_enabled': status.isGranted,
+      'exact_alarm': canScheduleExact,
+      'battery_optimized': !isBatteryIgnored, // True if the OS is still "optimizing" (restricting) us
+      'permanently_denied': status.isPermanentlyDenied,
     };
+  }
+
+  /// طلب صلاحيات الإشعارات — Request notification permissions
+  static Future<bool> requestNotificationPermission() async {
+    final status = await Permission.notification.request();
+    return status.isGranted;
+  }
+
+  /// طلب استثناء من تحسين البطارية — Request ignore battery optimization
+  static Future<bool> requestIgnoreBatteryOptimizations() async {
+    final status = await Permission.ignoreBatteryOptimizations.request();
+    return status.isGranted;
+  }
+
+  /// طلب صلاحية المنبهات الدقيقة — Request exact alarm permission
+  static Future<void> requestExactAlarmPermission() async {
+    // Permission handler can launch the specific setting on Android 13+
+    await Permission.scheduleExactAlarm.request();
   }
 
   /// فتح إعدادات الإشعارات الخاصة بالتطبيق — Open App Notification Settings

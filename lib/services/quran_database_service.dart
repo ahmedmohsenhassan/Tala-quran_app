@@ -69,6 +69,7 @@ class QuranDatabaseService {
       _database = await openDatabase(
         path,
         version: _dbVersion,
+        onConfigure: _onConfigure,
         onCreate: _createTables,
       );
       
@@ -166,9 +167,8 @@ class QuranDatabaseService {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tafseer_key ON tafseers(verse_key)');
 
     // ⚡ Database Optimization (Phase 112)
+    // Note: Moved synchronous and journal_mode to _onConfigure to avoid transaction errors
     await db.execute('ANALYZE');
-    await db.execute('PRAGMA synchronous = NORMAL');
-    await db.execute('PRAGMA journal_mode = WAL');
 
     // 🔍 محرك البحث المتقدم (Full Text Search)
     // نستخدم FTS5 للبحث السريع بالكلمات
@@ -184,10 +184,16 @@ class QuranDatabaseService {
           content_rowid='id'
         )
       ''');
-      debugPrint('✅ [QuranDB] FTS5 table created successfully.');
+      // ✅ [QuranDB] FTS5 table created successfully.
     } catch (e) {
-      debugPrint('⚠️ [QuranDB] FTS5 not supported on this device, falling back to LIKE.');
+      debugPrint('! [QuranDB] FTS5 not supported on this device, falling back to LIKE.');
     }
+  }
+
+  /// إعدادات تهيئة قاعدة البيانات
+  static Future<void> _onConfigure(Database db) async {
+    // ⚠️ يتم تعطيل الـ PRAGMAs هنا لتجنب مشاكل التوافق في بعض إصدارات SQLite
+    // التي تعتبر هذه الأوامر "استعلامات" وتعطل فتح قاعدة البيانات.
   }
 
   // ======================================================================
@@ -447,6 +453,7 @@ class QuranDatabaseService {
       return [];
     }
   }
+
 
   // ======================================================================
   //  🔍 البحث — Search

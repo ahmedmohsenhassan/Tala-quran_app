@@ -4,29 +4,29 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vmath;
-import 'screens/splash_screen.dart';
-import 'screens/mushaf_viewer_screen.dart';
-import 'utils/app_colors.dart';
-import 'services/quran_database_service.dart';
-import 'services/notification_service.dart';
-import 'services/smart_notification_service.dart'; // 🔔 Smart Nudges
-import 'services/kids_mode_service.dart';
+import 'package:tala_quran_app/screens/splash_screen.dart';
+import 'package:tala_quran_app/screens/mushaf_viewer_screen.dart';
+import 'package:tala_quran_app/utils/app_colors.dart';
+import 'package:tala_quran_app/services/quran_database_service.dart';
+import 'package:tala_quran_app/services/notification_service.dart';
+import 'package:tala_quran_app/services/smart_notification_service.dart';
+import 'package:tala_quran_app/services/kids_mode_service.dart';
 import 'package:provider/provider.dart';
-import 'services/theme_service.dart';
+import 'package:tala_quran_app/services/theme_service.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'widgets/error_boundary.dart';
-import 'services/download_service.dart';
+import 'package:tala_quran_app/widgets/error_boundary.dart';
+import 'package:tala_quran_app/services/download_service.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart'; 
-import 'services/auth_service.dart';
-import 'services/firebase_khatma_service.dart';
-import 'services/firestore_sync_service.dart';
-import 'services/user_sync_service.dart';
-import 'services/content_download_service.dart';
-import 'services/achievement_service.dart';
-import 'services/spiritual_theme_service.dart';
+import 'package:tala_quran_app/firebase_options.dart'; 
+import 'package:tala_quran_app/services/auth_service.dart';
+import 'package:tala_quran_app/services/firebase_khatma_service.dart';
+import 'package:tala_quran_app/services/firestore_sync_service.dart';
+import 'package:tala_quran_app/services/user_sync_service.dart';
+import 'package:tala_quran_app/services/content_download_service.dart';
+import 'package:tala_quran_app/services/achievement_service.dart';
+import 'package:tala_quran_app/services/spiritual_theme_service.dart';
 
 
 /// مفتاح التحكم في المظهر — يمكن الوصول إليه من أي مكان في التطبيق
@@ -141,19 +141,19 @@ void main() async {
     ErrorBoundary(
       child: MultiProvider(
         providers: [
-          ChangeNotifierProvider(create: (_) => KidsModeService()),
+          ChangeNotifierProvider<KidsModeService>(create: (_) => KidsModeService()),
           // Inject AuthService to manage offline/online auth state freely
-          ChangeNotifierProvider(
+          ChangeNotifierProvider<AuthService>(
             create: (_) => AuthService(isFirebaseReady: isFirebaseInitialized),
           ),
           // 📡 Provide FirebaseKhatmaService for collaborative features
-          Provider(create: (_) => FirebaseKhatmaService()),
+          Provider<FirebaseKhatmaService>(create: (_) => FirebaseKhatmaService()),
           // 📡 Syncing service
-          Provider(create: (_) => FirestoreSyncService()),
-          ChangeNotifierProvider(create: (_) => UserSyncService()),
-          ChangeNotifierProvider(create: (_) => ContentDownloadService()),
-          ChangeNotifierProvider(create: (_) => AchievementService()..init()),
-          ChangeNotifierProvider(create: (_) => SpiritualThemeService()),
+          Provider<FirestoreSyncService>(create: (_) => FirestoreSyncService()),
+          ChangeNotifierProvider<UserSyncService>(create: (_) => UserSyncService()),
+          ChangeNotifierProvider<ContentDownloadService>(create: (_) => ContentDownloadService()),
+          ChangeNotifierProvider<AchievementService>(create: (_) => AchievementService()..init()),
+          ChangeNotifierProvider<SpiritualThemeService>(create: (_) => SpiritualThemeService()),
         ],
         child: const TalaQuranApp(),
       ),

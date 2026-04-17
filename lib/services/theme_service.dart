@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// خدمة إدارة المظهر — Theme Management Service
@@ -133,5 +134,28 @@ class ThemeService {
   static Future<void> setMushafTheme(String theme) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_mushafThemeKey, theme);
+  }
+
+  // --- Mushaf Color Helpers ---
+
+  static Color getMushafDeepGreen(String theme) {
+    if (theme == mushafPremium) return const Color(0xFF031E17);
+    if (theme == mushafDark) return const Color(0xFF0C1D18);
+    return const Color(0xFF0F291E); // Classic
+  }
+
+  static Color getMushafRichGold(String theme) {
+    if (theme == mushafPremium) return const Color(0xFFEBC351); // Brighter gold
+    return const Color(0xFFD4A947); // Standard gold
+  }
+
+  static Color getMushafParchment(String theme) {
+    if (theme == mushafPremium) return const Color(0xFFFDF6E3); 
+    if (theme == mushafDark) return const Color(0xFFE8E1CC);
+    return const Color(0xFFF4ECD8); // Classic
+  }
+
+  static Color getMushafParchmentDark(String theme) {
+    return const Color(0xFFE2D9C2);
   }
 }

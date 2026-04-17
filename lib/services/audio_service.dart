@@ -29,9 +29,7 @@ class AudioService {
   final StreamController<AyahPlaybackState?> _ayahStateController = 
       StreamController<AyahPlaybackState?>.broadcast();
   
-  List<Map<String, int>> _playlist = [];
   int _currentIndex = -1;
-  Reciter? _activeReciter;
   AyahPlaybackState? _lastEmittedState;
   
   // 📖 Hifz / Repetition State
@@ -39,14 +37,50 @@ class AudioService {
   int _rangeRepeatCount = 1;     // How many times to repeat the whole sequence
   int _currentAyahIteration = 1; // Current iteration of the active Ayah
   int _currentRangeIteration = 1;// Current iteration of the whole sequence
-  int _rangeStartIndex = 0;      // Where the range begins
   
   StreamSubscription? _posSub;
   StreamSubscription? _stateSub;
+  bool _sequenceComplete = false;
+  ConcatenatingAudioSource? _playlist;
+
+  bool get isSequenceComplete => _sequenceComplete;
 
   Future<void> _initSession() async {
     final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.speech());
+    await session.configure(const AudioSessionConfiguration(
+      androidAudioAttributes: AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.music,
+        usage: AndroidAudioUsage.media,
+      ),
+      androidWillPauseWhenDucked: true,
+      avAudioSessionCategory: AVAudioSessionCategory.playback,
+    ));
+    
+    // 🎧 Intercept audio interruptions (Calls, other apps)
+    session.interruptionEventStream.listen((event) {
+      if (event.begin) {
+        switch (event.type) {
+          case AudioInterruptionType.duck:
+            _player.setVolume(0.5);
+            break;
+          case AudioInterruptionType.pause:
+          case AudioInterruptionType.unknown:
+            _player.pause();
+            break;
+        }
+      } else {
+        switch (event.type) {
+          case AudioInterruptionType.duck:
+            _player.setVolume(1.0);
+            break;
+          case AudioInterruptionType.pause:
+            _player.play();
+            break;
+          case AudioInterruptionType.unknown:
+            break;
+        }
+      }
+    });
   }
 
   static Future<String> _getLocalPath() async {
@@ -105,25 +139,35 @@ class AudioService {
       
       // Auto-transition to next ayah when current one finishes
       if (state.processingState == ProcessingState.completed) {
-        if (_currentIndex != -1 && _playlist.isNotEmpty) {
+        if (_currentIndex != -1 && _player.sequence != null) {
            _handleAyahCompletion();
         }
       }
     });
 
     _posSub = _player.positionStream.listen((_) => _updateAyahState());
+
+    // 📡 Monitor index changes for notification sync
+    _player.currentIndexStream.listen((index) {
+      if (index != null && index != _currentIndex) {
+        _currentIndex = index;
+        _currentAyahIteration = 1; // Reset iteration on manual/auto skip
+        _updateAyahState();
+      }
+    });
   }
 
   void _updateAyahState() {
-    if (_currentIndex == -1 || _playlist.isEmpty) {
+    final mediaItem = _player.sequenceState?.currentSource?.tag as MediaItem?;
+    
+    if (mediaItem == null || _currentIndex == -1) {
       _lastEmittedState = null;
       _ayahStateController.add(null);
       return;
     }
 
-    final verse = _playlist[_currentIndex];
-    final surah = verse['surah']!;
-    final ayah = verse['ayah']!;
+    final int surah = mediaItem.extras?['surah'] ?? 0;
+    final int ayah = mediaItem.extras?['ayah'] ?? 0;
     final page = QuranPageHelper.getPageForAyah(surah, ayah);
 
     final state = AyahPlaybackState(
@@ -140,9 +184,16 @@ class AudioService {
       totalRangeRepeats: _rangeRepeatCount,
     );
 
-    // Always emit — the listener needs position updates for word sync
     _lastEmittedState = state;
     _ayahStateController.add(state);
+  }
+
+  /// 🧹 RESET SYNCHRONOUSLY: Clears completion flags instantly to prevent double-page jumps.
+  /// Should be called by the UI as soon as a page change is detected.
+  void clearSequenceStatus() {
+    _sequenceComplete = false;
+    _lastEmittedState = null;
+    _ayahStateController.add(null);
   }
 
   // ===================== AYAH SEQUENCES =====================
@@ -153,15 +204,88 @@ class AudioService {
     required Reciter reciter,
     bool playImmediately = true,
   }) async {
-    _playlist = verses;
+    // 🛑 PROACTIVE STOP: Prevent old audio from leaking during the transition
+    await _player.stop(); 
+    
+    // 🧹 STATE RESET: Notify listeners immediately that the old sequence is gone
+    _lastEmittedState = null;
+    _ayahStateController.add(null);
+
     _currentIndex = startIndex;
-    _rangeStartIndex = startIndex; // Track where we started
-    _activeReciter = reciter;
     _currentAyahIteration = 1;
     _currentRangeIteration = 1;
     _sequenceComplete = false;
     
-    await _playCurrentFromPlaylist(playImmediately: playImmediately);
+    // 🚀 Build the ConcatenatingAudioSource efficiently
+    final List<AudioSource> audioSources = verses.map((v) => 
+      _createAudioSource(v['surah']!, v['ayah']!, reciter)
+    ).toList();
+
+    _playlist = ConcatenatingAudioSource(
+      children: audioSources, 
+      useLazyPreparation: true,
+    );
+    
+    await _player.setAudioSource(_playlist!, initialIndex: startIndex);
+    
+    // ♾️ Set to LoopMode.off by default because we handle chaining manually
+    // or LoopMode.all if we want to loop the current sequence.
+    // For Quran, we'll use LoopMode.off and handle the "Next Surah" or "Wrap Al-Fatihah" logic.
+    await _player.setLoopMode(LoopMode.off);
+
+    if (playImmediately) {
+      Future.delayed(const Duration(milliseconds: 100), () => _player.play());
+    }
+  }
+
+  /// ➕ Dynamic Append: Add more verses to the existing playlist without stopping playback
+  Future<void> appendVerses({
+    required List<Map<String, int>> verses,
+    required Reciter reciter,
+  }) async {
+    if (_playlist == null) return;
+
+    final List<AudioSource> newSources = verses.map((v) => 
+      _createAudioSource(v['surah']!, v['ayah']!, reciter)
+    ).toList();
+
+    await _playlist!.addAll(newSources);
+    debugPrint('➕ [AudioService] Appended ${newSources.length} verses to playlist. New size: ${_playlist!.length}');
+  }
+
+  AudioSource _createAudioSource(int surah, int ayah, Reciter reciter) {
+    final surahName = QuranPageHelper.surahNames[surah - 1];
+    final publicUrl = AudioUrlService.getAyahUrl(
+      reciterBaseUrl: reciter.baseUrl,
+      surahNumber: surah,
+      ayahNumber: ayah,
+    );
+
+    String? firebaseFallback;
+    if (reciter.firebasePath != null) {
+      firebaseFallback = AudioUrlService.getFirebaseAyahUrl(
+        firebasePath: reciter.firebasePath!,
+        surahNumber: surah,
+        ayahNumber: ayah,
+      );
+    }
+
+    // Determine primary source
+    final String primaryUrl = (reciter.preferFirebase && firebaseFallback != null) 
+        ? firebaseFallback 
+        : publicUrl;
+
+    return AudioSource.uri(
+      Uri.parse(primaryUrl),
+      tag: MediaItem(
+        id: 'ayah_${surah}_$ayah',
+        album: 'سورة $surahName',
+        title: 'آية $ayah',
+        artist: reciter.name,
+        artUri: Uri.parse(reciter.imageUrl),
+        extras: {'surah': surah, 'ayah': ayah},
+      ),
+    );
   }
 
   void _handleAyahCompletion() {
@@ -178,132 +302,25 @@ class AudioService {
     }
   }
 
-  Future<void> _playCurrentFromPlaylist({bool playImmediately = true}) async {
-    if (_currentIndex < 0 || _currentIndex >= _playlist.length || _activeReciter == null) return;
-    
-    final verse = _playlist[_currentIndex];
-    final surah = verse['surah']!;
-    final ayah = verse['ayah']!;
-    final surahName = QuranPageHelper.surahNames[surah - 1];
-
-    // 🚀 Prepare URLs (Smart Priority)
-    final publicUrl = AudioUrlService.getAyahUrl(
-      reciterBaseUrl: _activeReciter!.baseUrl,
-      surahNumber: surah,
-      ayahNumber: ayah,
-    );
-    
-    String? firebaseFallback;
-    if (_activeReciter!.firebasePath != null) {
-      firebaseFallback = AudioUrlService.getFirebaseAyahUrl(
-        firebasePath: _activeReciter!.firebasePath!,
-        surahNumber: surah,
-        ayahNumber: ayah,
-      );
-    }
-
-    final List<String> sources = [];
-    if (_activeReciter!.preferFirebase && firebaseFallback != null) {
-      sources.add(firebaseFallback);
-      sources.add(publicUrl);
-    } else {
-      sources.add(publicUrl);
-      if (firebaseFallback != null) sources.add(firebaseFallback);
-    }
-
-    // 🛡️ Play with automatic fallback
-    for (int i = 0; i < sources.length; i++) {
-      try {
-        final currentUrl = sources[i];
-        debugPrint('🎧 [AudioService] Loading Source $i: $currentUrl');
-
-        final audioSource = currentUrl.startsWith('http')
-            ? AudioSource.uri(
-                Uri.parse(currentUrl),
-                tag: MediaItem(
-                  id: 'ayah_${surah}_$ayah',
-                  album: 'تلا القرآن - سورة $surahName',
-                  title: 'آية $ayah',
-                  artist: _activeReciter!.name,
-                  artUri: Uri.parse(_activeReciter!.imageUrl),
-                ),
-              )
-            : AudioSource.file(
-                currentUrl,
-                tag: MediaItem(
-                  id: 'ayah_${surah}_$ayah',
-                  album: 'تلا القرآن - سورة $surahName',
-                  title: 'آية $ayah',
-                  artist: _activeReciter!.name,
-                  artUri: Uri.parse(_activeReciter!.imageUrl),
-                ),
-              );
-
-        await _player.setAudioSource(audioSource);
-        
-        if (playImmediately) {
-          try {
-            await _player.play();
-          } catch (playbackError) {
-            debugPrint('⚠️ [AudioService] Playback immediate start failed: $playbackError');
-            // We established the source is okay (setAudioSource worked), 
-            // so we try one more play command or let the user resume.
-            _player.play(); 
-          }
-        }
-        
-        _updateAyahState();
-        return; // ✅ Success! Break the retry loop
-      } catch (e) {
-        debugPrint('❌ [AudioService] Source $i failed: $e');
-        if (i == sources.length - 1) {
-          debugPrint('🚩 [AudioService] ALL sources failed for $surah:$ayah. Skipping to next...');
-          // 🚀 AUTO-SKIP to next Ayah to avoid stopping the whole recitation
-          Future.delayed(const Duration(milliseconds: 1000), () {
-            if (_player.processingState != ProcessingState.loading) {
-               nextAyah();
-            }
-          });
-        } else {
-          debugPrint('🔄 [AudioService] Retrying with next source...');
-        }
-      }
-    }
-  }
-
-  // 🚩 Signals when the playlist is exhausted (range repeats done too)
-  bool _sequenceComplete = false;
-  bool get isSequenceComplete => _sequenceComplete;
-
   void nextAyah() {
-    if (_currentIndex < _playlist.length - 1) {
-      _currentIndex++;
+    if (_player.hasNext) {
       _currentAyahIteration = 1;
+      _player.seekToNext();
       _sequenceComplete = false;
-      _playCurrentFromPlaylist(playImmediately: true);
     } else {
-      // 🔄 Sequence exhausted — Check Range Repetition
-      if (_currentRangeIteration < _rangeRepeatCount || _rangeRepeatCount == 0) {
-        _currentRangeIteration++;
-        _currentIndex = _rangeStartIndex;
-        _currentAyahIteration = 1;
-        _sequenceComplete = false;
-        _playCurrentFromPlaylist(playImmediately: true);
-        debugPrint('🔁 Range Looping: Iteration $_currentRangeIteration');
-      } else {
-        // 🏁 SEQUENCE COMPLETE — signal to MushafAudioPlayer to handle page turn
-        debugPrint('🏁 [AudioService] Sequence complete. Signaling end.');
-        _sequenceComplete = true;
-        _updateAyahState(); // Emit final state so listener can react
-      }
+      // 🔄 Infinite Wrap-around: Go back to the very first ayah of the Quran
+      debugPrint('🔁 [AudioService] Quran complete. Looping back to Al-Fatihah.');
+      _currentAyahIteration = 1;
+      _player.seek(Duration.zero, index: 0);
+      _sequenceComplete = false;
+      _updateAyahState();
     }
   }
 
   void previousAyah() {
-    if (_currentIndex > 0) {
-      _currentIndex--;
+    if (_player.hasPrevious) {
       _currentAyahIteration = 1;
-      _playCurrentFromPlaylist();
+      _player.seekToPrevious();
     }
   }
 

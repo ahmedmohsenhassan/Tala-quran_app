@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tala_quran_app/screens/main_dashboard_screen.dart';
-import 'package:tala_quran_app/screens/mushaf_viewer_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/bookmark_service.dart';
 import '../services/reading_service.dart';
@@ -211,36 +210,22 @@ class _SplashScreenState extends State<SplashScreen>
         // Mark as launched
         await prefs.setBool('isFirstLaunch', false);
         
-        // Push Home screen to the stack, then push Mushaf on top of it!
-        // This makes sure when they press "back", they go to the Home Screen.
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
-        );
-        
-        // Push Mushaf (Surah Al-Fatihah, Page 1) immediately on top with no animation
-        Future.delayed(const Duration(milliseconds: 50), () {
-          if (mounted) {
-            Navigator.push(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    const MushafViewerScreen(initialPage: 1),
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
-              ),
-            );
-          }
-        });
-      } else {
-        // 🚀 FAST STARTUP: Normal Launch -> DIRECT TO MUSHAF
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => MushafViewerScreen(
-              initialPage: _lastReadPage,
+            builder: (_) => const MainDashboardScreen(initialTabIndex: 0),
+          ),
+        );
+      } else {
+        // 🚀 FAST STARTUP: Normal Launch -> Main Dashboard on Mushaf Tab
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MainDashboardScreen(
+              initialTabIndex: 1,
+              initialMushafPage: _lastReadPage,
             ),
           ),
         );

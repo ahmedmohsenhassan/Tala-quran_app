@@ -13,7 +13,7 @@ class NotificationSettingsScreen extends StatefulWidget {
 }
 
 class _NotificationSettingsScreenState
-    extends State<NotificationSettingsScreen> {
+    extends State<NotificationSettingsScreen> with WidgetsBindingObserver {
   bool _enabled = true;
   bool _morning = true;
   bool _evening = true;
@@ -23,10 +23,41 @@ class _NotificationSettingsScreenState
   int _eveningHour = 20;
   bool _isLoading = true;
 
+  // Health Status
+  Map<String, bool> _healthStatus = {};
+  bool _isCheckingHealth = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
+    _checkHealth();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Refresh health status when user returns from settings
+    if (state == AppLifecycleState.resumed) {
+      _checkHealth();
+    }
+  }
+
+  Future<void> _checkHealth() async {
+    setState(() => _isCheckingHealth = true);
+    final health = await NotificationService.getNotificationHealth();
+    if (mounted) {
+      setState(() {
+        _healthStatus = health;
+        _isCheckingHealth = false;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -113,6 +144,10 @@ class _NotificationSettingsScreenState
             : ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
+                  // نظام التشخيص الذكي
+                  _buildDiagnosticSection(),
+                  const SizedBox(height: 24),
+
                   // رسالة ترحيبية
                   _buildWelcomeCard(),
                   const SizedBox(height: 24),
@@ -362,6 +397,169 @@ class _NotificationSettingsScreenState
             activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
             inactiveTrackColor: Colors.white.withValues(alpha: 0.1),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiagnosticSection() {
+    final bool allGood = _healthStatus['system_enabled'] == true &&
+        _healthStatus['exact_alarm'] == true &&
+        _healthStatus['battery_optimized'] == false;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: allGood
+            ? AppColors.emerald.withValues(alpha: 0.1)
+            : Colors.red.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: allGood
+              ? AppColors.gold.withValues(alpha: 0.2)
+              : Colors.red.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                allGood ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                color: allGood ? AppColors.gold : Colors.redAccent,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'فحص جاهزية النظام',
+                style: GoogleFonts.amiri(
+                  color: allGood ? AppColors.gold : Colors.redAccent,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (_isCheckingHealth)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18, color: AppColors.textMuted),
+                  onPressed: _checkHealth,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildHealthItem(
+            'صلاحية الإشعارات',
+            _healthStatus['system_enabled'] ?? false,
+            'ضرورية لوصول التذكيرات لشاشة القفل',
+            onFix: () => NotificationService.openNotificationSettings(),
+          ),
+          _buildHealthItem(
+            'توقيت المنبهات',
+            _healthStatus['exact_alarm'] ?? false,
+            'تسمح للتطبيق بإرسال الإشعارات في وقتها بدقة',
+            onFix: () => NotificationService.requestExactAlarmPermission(),
+          ),
+          _buildHealthItem(
+            'أداء الخلفية',
+            !(_healthStatus['battery_optimized'] ?? true),
+            'تمنع النظام من إغلاق التطبيق في الخلفية',
+            onFix: () => NotificationService.requestIgnoreBatteryOptimizations(),
+            isBattery: true,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0),
+            child: Divider(color: Colors.white10),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                NotificationService.sendImmediateNotification(
+                  title: '✨ اختبار النجاح',
+                  body: 'لقد قمت بإصلاح إعدادات الإشعارات بنجاح. سنرافقك في رحلتك مع القرآن.',
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('تم إرسال إشعار تجريبي... انتظر ثانية')),
+                );
+              },
+              icon: const Icon(Icons.send_rounded, size: 18),
+              label: Text(
+                'إرسال إشعار تجريبي للتحقق',
+                style: GoogleFonts.amiri(fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold.withValues(alpha: 0.15),
+                foregroundColor: AppColors.gold,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthItem(String title, bool isOk, String subtitle,
+      {required VoidCallback onFix, bool isBattery = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(
+            isOk ? Icons.check_circle_outline : Icons.error_outline_rounded,
+            color: isOk ? Colors.greenAccent : Colors.orangeAccent,
+            size: 16,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.amiri(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.amiri(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isOk)
+            TextButton(
+              onPressed: onFix,
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.gold.withValues(alpha: 0.1),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                minimumSize: const Size(0, 30),
+              ),
+              child: Text(
+                'إصلاح',
+                style: GoogleFonts.amiri(
+                  color: AppColors.gold,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -105,6 +105,16 @@ class FirebaseKhatmaService {
     });
   }
 
+  /// مغادرة الختمة — Leave a khatma
+  Future<void> leaveKhatma(String khatmaId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _db.collection('shared_khatmas').doc(khatmaId).update({
+      'participants': FieldValue.arrayRemove([user.uid]),
+    });
+  }
+
   /// تحديث التقدم — Update user progress in a khatma
   Future<void> updateProgress(String khatmaId, int pagesRead) async {
     final user = _auth.currentUser;

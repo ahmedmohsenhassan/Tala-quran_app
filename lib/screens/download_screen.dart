@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../services/reading_service.dart';
-import 'main_nav_screen.dart';
+import 'main_dashboard_screen.dart';
 
 class DownloadScreen extends StatefulWidget {
   const DownloadScreen({super.key});
@@ -46,7 +46,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
 
   void _navigateToHome() {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainNavScreen()),
+      MaterialPageRoute(builder: (_) => const MainDashboardScreen()),
     );
   }
 
